@@ -7,6 +7,7 @@ OSINT Harvester is designed for **authorized, read-only reconnaissance** of publ
 ## Features
 
 - English-only app interface and scan output
+- Refreshed dark Material 3 dashboard with rounded panels, clearer scan controls, and cutout-safe edge-to-edge layout
 
 - Extract publicly visible email addresses and phone numbers from HTML pages
 - Discover linked social profiles using parsed URL hostnames
