@@ -55,7 +55,7 @@
 
     <string name="section_dns">DNS INTELLIGENCE (DNS OVER HTTPS)</string>
     <string name="dns_requires_domain">DNS record lookup requires a domain name.</string>
-    <string name="dns_record"> %1$s %2$s: %3$s (TTL %4$ds)</string>
+    <string name="dns_record">%1$s %2$s: %3$s (TTL %4$ds)</string>
     <string name="dns_spf_detected">SPF policy detected.</string>
     <string name="dns_dmarc_detected">DMARC policy detected.</string>
     <string name="dnssec_authenticated">DNSSEC: the resolver authenticated at least one response.</string>
