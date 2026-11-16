@@ -19,7 +19,7 @@ OSINT Harvester is designed for **authorized, read-only reconnaissance** of publ
 
 - Only HTTPS targets on the default port 443 are accepted.
 - DNS resolution rejects loopback, private, link-local, carrier-grade NAT, multicast, documentation, and reserved address ranges.
-- The HTTP client connects using the validated DNS answers, with redirects and connection retries disabled.
+- The HTTP client connects using the validated DNS answers, does not use a system proxy, and has redirects and connection retries disabled.
 - Deep crawling stays on the exact same HTTPS origin (scheme, hostname, and port).
 - Network timeouts and response-size limits are enforced.
 - A crawl is limited to 20 pages, 10 links per page, and a maximum depth of 5.
@@ -57,10 +57,10 @@ bash ./gradlew lintDebug testDebugUnitTest assembleDebug
 On Windows:
 
 ```powershell
-.gradlew.bat lintDebug testDebugUnitTest assembleDebug
+.\gradlew.bat lintDebug testDebugUnitTest assembleDebug
 ```
 
-The Android CI workflow runs lint, JVM unit tests, and a debug APK build for pushes and pull requests.
+The Android CI workflow runs lint, JVM unit tests, and both debug and release APK assembly for pushes and pull requests.
 
 ## Project security
 
