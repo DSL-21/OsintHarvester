@@ -1,3 +1,110 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">OsintHarvester</string>
+    <string name="app_name">OSINT Harvester</string>
+    <string name="app_tagline">Passive public-source collection · HTTPS only · Authorized targets</string>
+    <string name="target_url_hint">Public HTTPS domain (e.g. example.com)</string>
+    <string name="scan_button">Start Scan</string>
+    <string name="cancel_button">Cancel Scan</string>
+    <string name="status_ready">Ready to scan</string>
+    <string name="section_basic">Basic Collection</string>
+    <string name="option_emails">Email Addresses</string>
+    <string name="option_phones">Phone Numbers</string>
+    <string name="option_social">Social Profiles</string>
+    <string name="option_meta">HTML Metadata</string>
+    <string name="option_comments">HTML Comments</string>
+    <string name="option_headers">HTTP Headers &amp; Technologies</string>
+    <string name="section_advanced">Advanced OSINT</string>
+    <string name="option_subdomains">Subdomains (crt.sh)</string>
+    <string name="option_deep_crawl">Deep Crawl</string>
+    <string name="crawl_depth_initial">Crawl Depth: 1</string>
+    <string name="crawl_depth">Crawl Depth: %1$d</string>
+    <string name="option_wayback">Wayback Machine</string>
+    <string name="option_reverse_ip">Reverse IP Lookup</string>
+    <string name="option_dns">DNS Records</string>
+    <string name="option_rdap">Domain Registration (RDAP)</string>
+    <string name="option_public_files">Public Metadata Files</string>
+    <string name="section_security">Security Analysis</string>
+    <string name="option_tls">TLS Certificate</string>
+    <string name="option_api_keys">Possible API Keys (masked)</string>
+    <string name="option_errors">Error Messages</string>
+    <string name="option_public_paths">Public Standard Paths (HEAD)</string>
+    <string name="option_robots">robots.txt &amp; Disallow Rules</string>
+    <string name="section_results">Scan Results</string>
+
+    <string name="target_invalid_input">Enter a valid public HTTPS URL on port 443.</string>
+    <string name="target_invalid">Invalid target. Use a public HTTPS website on port 443.</string>
+    <string name="select_scan_option">Select at least one scan option.</string>
+    <string name="scan_starting">Starting passive OSINT collection…</string>
+    <string name="scan_running_summary">Running %1$d modules · up to %2$d concurrently</string>
+    <string name="scan_completed">Scan completed.</string>
+    <string name="scan_cancelled">Scan cancelled.</string>
+    <string name="scan_error">Scan error: %1$s</string>
+    <string name="scan_failed">Scan failed.</string>
+    <string name="no_results">No results found.</string>
+    <string name="module_error">%1$s: %2$s</string>
+
+    <string name="section_public_files">PUBLIC STANDARD FILES</string>
+    <string name="found_http_path">Found: %1$s (HTTP %2$d)</string>
+    <string name="section_tls">TLS CERTIFICATE</string>
+    <string name="tls_unavailable">The certificate could not be retrieved safely, or the server does not support HEAD requests.</string>
+    <string name="tls_issuer">Issuer: %1$s</string>
+    <string name="tls_valid_from">Valid from: %1$s</string>
+    <string name="tls_valid_until">Valid until: %1$s</string>
+    <string name="tls_signature_algorithm">Signature algorithm: %1$s</string>
+    <string name="tls_subject">Subject: %1$s</string>
+
+    <string name="section_dns">DNS INTELLIGENCE (DNS OVER HTTPS)</string>
+    <string name="dns_requires_domain">DNS record lookup requires a domain name.</string>
+    <string name="dns_record"> %1$s %2$s: %3$s (TTL %4$ds)</string>
+    <string name="dns_spf_detected">SPF policy detected.</string>
+    <string name="dns_dmarc_detected">DMARC policy detected.</string>
+    <string name="dnssec_authenticated">DNSSEC: the resolver authenticated at least one response.</string>
+    <string name="dnssec_not_authenticated">DNSSEC: no authenticated response flag was observed.</string>
+    <string name="dns_no_answers">No public DNS answers were returned.</string>
+
+    <string name="section_rdap">DOMAIN REGISTRATION (RDAP)</string>
+    <string name="rdap_requires_domain">RDAP lookup requires a domain name.</string>
+    <string name="rdap_bootstrap_unavailable">The IANA RDAP bootstrap registry is unavailable.</string>
+    <string name="rdap_bootstrap_empty">The IANA RDAP bootstrap registry returned no usable data.</string>
+    <string name="rdap_no_record">No public RDAP registration record was returned.</string>
+    <string name="rdap_parse_error">The RDAP response could not be parsed.</string>
+    <string name="rdap_domain">Domain: %1$s</string>
+    <string name="rdap_handle">Registry handle: %1$s</string>
+    <string name="rdap_registrar">Registrar: %1$s</string>
+    <string name="rdap_status">Status: %1$s</string>
+    <string name="rdap_event">%1$s: %2$s</string>
+    <string name="rdap_nameserver">Nameserver: %1$s</string>
+
+    <string name="section_reverse_ip">REVERSE IP (%1$s)</string>
+    <string name="domain_result">Domain: %1$s</string>
+    <string name="reverse_ip_unavailable">The reverse-IP service is unavailable.</string>
+    <string name="section_wayback">WAYBACK MACHINE</string>
+    <string name="wayback_last_snapshot">Last available snapshot: %1$s</string>
+    <string name="wayback_no_snapshot">No valid archived snapshot was returned for this URL.</string>
+    <string name="wayback_archive_url">Archive URL: %1$s</string>
+    <string name="wayback_unavailable">The Wayback Machine returned an invalid response or is unavailable.</string>
+
+    <string name="section_public_paths">PUBLIC STANDARD PATHS</string>
+    <string name="path_available">%1$s — available (HTTP %2$d)</string>
+    <string name="path_restricted">%1$s — access restricted (HTTP %2$d)</string>
+    <string name="section_robots">ROBOTS.TXT</string>
+    <string name="robots_unavailable">robots.txt is not publicly available.</string>
+    <string name="robots_found">robots.txt was found.</string>
+
+    <string name="section_emails">EMAIL ADDRESSES</string>
+    <string name="section_phones">PHONE NUMBERS</string>
+    <string name="section_social">SOCIAL PROFILES</string>
+    <string name="section_meta">HTML METADATA</string>
+    <string name="meta_generator">Generator: %1$s</string>
+    <string name="meta_description">Description: %1$s</string>
+    <string name="meta_keywords">Keywords: %1$s</string>
+    <string name="section_html_comments">HTML COMMENTS</string>
+    <string name="section_http_headers">HTTP HEADERS (SENSITIVE VALUES REDACTED)</string>
+    <string name="section_detected_technologies">DETECTED TECHNOLOGIES</string>
+    <string name="section_api_keys">POSSIBLE API KEYS (VALUES MASKED)</string>
+    <string name="possible_api_key">Possible key: %1$s</string>
+    <string name="section_errors">ERROR MESSAGES</string>
+    <string name="section_subdomains">PUBLICLY OBSERVED SUBDOMAINS</string>
+    <string name="subdomains_truncated">Showing 50 of %1$d discovered names.</string>
+    <string name="crtsh_unavailable">crt.sh returned an invalid response or is unavailable.</string>
 </resources>
