@@ -16,6 +16,6 @@ internal object SensitiveTextRedactor {
         value
             .replace(bearerPattern, "Bearer [REDACTED]")
             .replace(assignmentPattern) { match ->
-                "\${match.groupValues[1]}=[REDACTED]"
+                "${match.groupValues[1]}=[REDACTED]"
             }
 }
