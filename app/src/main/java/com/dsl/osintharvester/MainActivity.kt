@@ -1,5 +1,7 @@
 package com.dsl.osintharvester
 
+import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -10,6 +12,10 @@ import android.widget.ProgressBar
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.*
@@ -94,6 +100,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        applySystemBarInsets()
         initViews()
 
         scanButton.setOnClickListener {
@@ -117,6 +124,40 @@ class MainActivity : AppCompatActivity() {
         cancelActiveCalls()
         activityScope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * Keeps the dashboard clear of status/navigation bars and camera cutouts
+     * on edge-to-edge Android versions.
+     */
+    private fun applySystemBarInsets() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = Color.TRANSPARENT
+        window.navigationBarColor = Color.TRANSPARENT
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
+
+        val root = findViewById<View>(R.id.root_container)
+        val left = root.paddingLeft
+        val top = root.paddingTop
+        val right = root.paddingRight
+        val bottom = root.paddingBottom
+
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, windowInsets ->
+            val safeInsets = windowInsets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            view.setPadding(
+                left + safeInsets.left,
+                top + safeInsets.top,
+                right + safeInsets.right,
+                bottom + safeInsets.bottom
+            )
+            windowInsets
+        }
+        ViewCompat.requestApplyInsets(root)
     }
 
         /**
@@ -324,15 +365,27 @@ class MainActivity : AppCompatActivity() {
 
     private fun createTextView(text: String, isTitle: Boolean = false): TextView {
         val textView = TextView(this)
+        val density = resources.displayMetrics.density
+        fun dp(value: Int): Int = (value * density).toInt()
+
         textView.text = text
-        textView.setTextColor(resources.getColor(android.R.color.white, theme))
-        if (isTitle) {
-            textView.textSize = 16f
-            textView.setPadding(0, 16, 0, 4)
+        textView.includeFontPadding = false
+        textView.setTextColor(
+            resources.getColor(
+                if (isTitle) R.color.accent_cyan else R.color.text_secondary,
+                theme
+            )
+        )
+        textView.typeface = if (isTitle) {
+            Typeface.create("sans-serif-medium", Typeface.BOLD)
         } else {
-            textView.textSize = 14f
-            textView.setPadding(0, 4, 0, 4)
+            Typeface.create("sans-serif", Typeface.NORMAL)
         }
+        textView.textSize = if (isTitle) 12f else 13f
+        textView.letterSpacing = if (isTitle) 0.06f else 0f
+        textView.setLineSpacing(dp(3).toFloat(), 1f)
+        textView.setPadding(0, dp(if (isTitle) 12 else 6), 0, dp(6))
+        textView.setTextIsSelectable(true)
         return textView
     }
 
@@ -913,7 +966,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_HEADER_VALUE_LENGTH = 512
         private const val MAX_RESULT_TEXT_LENGTH = 600
         private const val MAX_VISIBLE_RESULTS = 350
-        private const val USER_AGENT = "OSINT-Harvester/1.2.1 (+https://github.com/DSL-21/OsintHarvester)"
+        private const val USER_AGENT = "OSINT-Harvester/1.3.0 (+https://github.com/DSL-21/OsintHarvester)"
     }
 }
 

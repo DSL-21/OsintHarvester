@@ -55,6 +55,14 @@ This is a targeted source and configuration review of the Android app, its URL h
 - Keep the application English-only; no locale-specific strings or runtime translation dependency is added.
 - No scan, network, storage, or security behavior is changed by this language-only update.
 
+## Dashboard redesign for 1.3.0
+
+- Replace the flat, fixed-color screen with a dark Material 3 dashboard using grouped cards, clearer scan controls, rounded input/results panels, and a high-contrast accent palette.
+- Reorganize collection options into compact two-column groups while retaining every existing control ID and scan option.
+- Apply explicit system-bar and display-cutout insets for edge-to-edge Android layouts so the header stays clear of camera cutouts and status icons.
+- Improve result heading/body typography and text selection for collected findings.
+- No scan modules, target validation, network destinations, storage behavior, or security restrictions are changed by the UI refresh.
+
 ## Remaining limitations
 
 - Some OSINT providers are external services. Optional lookups disclose the selected domain or public IP to the provider shown in the README, including Google Public DNS, IANA bootstrap data, and the selected RDAP registry.

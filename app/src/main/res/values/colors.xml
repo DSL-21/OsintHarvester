@@ -2,4 +2,17 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="app_background">#0A1322</color>
+    <color name="surface_card">#111E30</color>
+    <color name="surface_status">#102638</color>
+    <color name="surface_input">#0C1929</color>
+    <color name="surface_results">#0B1726</color>
+    <color name="surface_stroke">#263B52</color>
+    <color name="accent_cyan">#43E3C5</color>
+    <color name="accent_soft">#153D43</color>
+    <color name="accent_blue">#55B8F5</color>
+    <color name="danger">#FF7A86</color>
+    <color name="text_primary">#F0F6FC</color>
+    <color name="text_secondary">#B6C5D6</color>
+    <color name="text_muted">#8195AA</color>
 </resources>
