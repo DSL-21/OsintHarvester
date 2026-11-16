@@ -23,8 +23,8 @@ OSINT Harvester is designed for **authorized, read-only reconnaissance** of publ
 - Deep crawling stays on the exact same HTTPS origin (scheme, hostname, and port).
 - Network timeouts and response-size limits are enforced.
 - A crawl is limited to 20 pages, 10 links per page, and a maximum depth of 5.
-- Public metadata checks use a short, fixed list of standard resources. The app does not probe `.env`, `.git`, administrative panels, backup folders, or configuration paths.
-- Cookie and authentication response headers are redacted. Likely API keys and common secret assignments are masked before display.
+- Public metadata checks use a short, fixed list of standard resources, with no duplicate requests between check groups. The app does not probe `.env`, `.git`, administrative panels, backup folders, or configuration paths.
+- Cookie, authentication, and sensitive URL query values are removed or redacted. Likely API keys and common secret assignments are masked before display.
 - Scan results are held in the activity UI and are not written to a database or exported by this version. Android backup is disabled.
 
 These controls reduce risk but are not a guarantee of security. Only scan systems you own or have explicit permission to assess. Do not submit credentials, session tokens, or sensitive query parameters as target URLs.
@@ -60,7 +60,7 @@ On Windows:
 .\gradlew.bat lintDebug testDebugUnitTest assembleDebug
 ```
 
-The Android CI workflow runs lint, JVM unit tests, and both debug and release APK assembly for pushes and pull requests.
+The Android CI workflow runs lint, JVM unit tests, and both debug and release APK assembly for pushes and pull requests. When a GitHub Release is published, a separate workflow rebuilds the installable debug-signed APK and attaches it with a SHA-256 checksum.
 
 ## Project security
 
