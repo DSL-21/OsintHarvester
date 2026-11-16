@@ -100,7 +100,7 @@ class MainActivity : AppCompatActivity() {
             val entered = urlInput.text.toString().trim()
             val target = NetworkSafety.parseTarget(entered)
             if (target == null) {
-                statusText.text = "Zadej platnou veřejnou HTTPS adresu na portu 443."
+                statusText.text = getString(R.string.target_invalid_input)
                 return@setOnClickListener
             }
             startCompleteScan(target.toString())
@@ -157,12 +157,12 @@ class MainActivity : AppCompatActivity() {
 
         depthSeekBar.max = DEPTH_LIMIT - 1
         depthSeekBar.progress = 0
-        depthLabel.text = "Hloubka skenování: ${depthSeekBar.progress + 1}"
+        depthLabel.text = getString(R.string.crawl_depth, depthSeekBar.progress + 1)
 
         depthSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 MAX_DEPTH = progress + 1
-                depthLabel.text = "Hloubka skenování: $MAX_DEPTH"
+                depthLabel.text = getString(R.string.crawl_depth, MAX_DEPTH)
             }
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
@@ -175,7 +175,7 @@ class MainActivity : AppCompatActivity() {
     private fun startCompleteScan(startUrl: String) {
         val target = NetworkSafety.parseTarget(startUrl)
         if (target == null) {
-            statusText.text = "Neplatná cílová adresa. Použij veřejný HTTPS web na portu 443."
+            statusText.text = getString(R.string.target_invalid)
             return
         }
         if (scanJob?.isActive == true) return
@@ -202,7 +202,7 @@ class MainActivity : AppCompatActivity() {
             maxDepth = MAX_DEPTH.coerceIn(1, DEPTH_LIMIT)
         )
         if (!options.anySelected()) {
-            statusText.text = "Nejdřív vyber alespoň jednu kontrolu."
+            statusText.text = getString(R.string.select_scan_option)
             return
         }
 
@@ -212,7 +212,7 @@ class MainActivity : AppCompatActivity() {
         scanButton.isEnabled = false
         cancelButton.visibility = View.VISIBLE
         resultsContainer.removeAllViews()
-        statusText.text = "Spouštím pasivní OSINT sběr..."
+        statusText.text = getString(R.string.scan_starting)
 
         val job = activityScope.launch {
             try {
@@ -230,7 +230,7 @@ class MainActivity : AppCompatActivity() {
                                     } catch (cancelled: CancellationException) {
                                         throw cancelled
                                     } catch (error: Exception) {
-                                        addResult("$label: ${error.javaClass.simpleName}")
+                                        addResult(getString(R.string.module_error, label, error.javaClass.simpleName))
                                     }
                                 }
                             }
@@ -269,16 +269,16 @@ class MainActivity : AppCompatActivity() {
                             scheduleModule("Public metadata files") { detectHiddenFiles(target.toString()) }
                         }
 
-                        updateStatus("Běží ${moduleJobs.size} modulů · max. $MAX_PARALLEL_MODULES souběžně")
+                        updateStatus(getString(R.string.scan_running_summary, moduleJobs.size, MAX_PARALLEL_MODULES))
                         moduleJobs.awaitAll()
                     }
                 }
-                updateStatus("Skenování dokončeno.")
+                updateStatus(getString(R.string.scan_completed))
             } catch (cancelled: CancellationException) {
-                updateStatus("Skenování bylo zrušeno.")
+                updateStatus(getString(R.string.scan_cancelled))
             } catch (error: Exception) {
-                addResult("Chyba skenování: ${error.javaClass.simpleName}")
-                updateStatus("Skenování skončilo s chybou.")
+                addResult(getString(R.string.scan_error, error.javaClass.simpleName))
+                updateStatus(getString(R.string.scan_failed))
             } finally {
                 withContext(NonCancellable) { finishScan() }
             }
@@ -305,7 +305,7 @@ class MainActivity : AppCompatActivity() {
     private suspend fun finishScan() {
         withContext(Dispatchers.Main) {
             if (resultsContainer.childCount == 0) {
-                resultsContainer.addView(createTextView("Žádné výsledky nebyly nalezeny."))
+                resultsContainer.addView(createTextView(getString(R.string.no_results)))
             }
             progressBar.visibility = View.GONE
             scanButton.isEnabled = true
@@ -490,13 +490,13 @@ class MainActivity : AppCompatActivity() {
             "/humans.txt",
             "/manifest.json"
         )
-        addResult("=== VEŘEJNÉ STANDARDNÍ SOUBORY ===", isTitle = true)
+        addResult(getString(R.string.section_public_files), isTitle = true)
 
         for (path in publicFiles) {
             val fileUrl = base.newBuilder().encodedPath(path).query(null).fragment(null).build()
             val response = safeRequest(fileUrl, method = "HEAD", readBody = false) ?: continue
             if (response.code in 200..299) {
-                addResult("Nalezeno: $path (HTTP ${response.code})")
+                addResult(getString(R.string.found_http_path, path, response.code))
             }
         }
     }
@@ -508,25 +508,25 @@ class MainActivity : AppCompatActivity() {
             method = "HEAD",
             readBody = false
         )
-        addResult("=== TLS CERTIFIKÁT ===", isTitle = true)
+        addResult(getString(R.string.section_tls), isTitle = true)
         val cert = response?.certificate
         if (cert == null) {
-            addResult("Certifikát nelze bezpečně načíst nebo server nepodporuje HEAD.")
+            addResult(getString(R.string.tls_unavailable))
             return
         }
-        addResult("Vydavatel: ${cert.issuerX500Principal.name.take(220)}")
-        addResult("Platný od: ${cert.notBefore}")
-        addResult("Platný do: ${cert.notAfter}")
-        addResult("Algoritmus podpisu: ${cert.sigAlgName}")
-        addResult("Subject: ${cert.subjectX500Principal.name.take(220)}")
+        addResult(getString(R.string.tls_issuer, cert.issuerX500Principal.name.take(220)))
+        addResult(getString(R.string.tls_valid_from, cert.notBefore))
+        addResult(getString(R.string.tls_valid_until, cert.notAfter))
+        addResult(getString(R.string.tls_signature_algorithm, cert.sigAlgName))
+        addResult(getString(R.string.tls_subject, cert.subjectX500Principal.name.take(220)))
     }
 
     private suspend fun getDnsRecords(startUrl: String) {
         val target = NetworkSafety.parseTarget(startUrl) ?: return
-        addResult("=== DNS INTELLIGENCE (DNS OVER HTTPS) ===", isTitle = true)
+        addResult(getString(R.string.section_dns), isTitle = true)
 
         if (!DomainIntelligence.isDomainName(target.host)) {
-            addResult("DNS record enumeration requires a domain name.")
+            addResult(getString(R.string.dns_requires_domain))
             return
         }
 
@@ -566,39 +566,39 @@ class MainActivity : AppCompatActivity() {
                 val recordType = DomainIntelligence.recordTypeName(answer.type)
                 val recordName = answer.name.trimEnd('.')
                 val label = if (queryName.startsWith("_dmarc.")) "DMARC TXT" else recordType
-                addResult("$label $recordName: ${answer.data.take(300)} (TTL ${answer.ttl}s)")
+                addResult(getString(R.string.dns_record, label, recordName, answer.data.take(300), answer.ttl))
                 answerCount++
 
                 if (recordType == "TXT" && answer.data.contains("v=spf1", ignoreCase = true)) {
-                    addResult("SPF policy detected.")
+                    addResult(getString(R.string.dns_spf_detected))
                 }
                 if (recordType == "TXT" && answer.data.contains("v=DMARC1", ignoreCase = true)) {
-                    addResult("DMARC policy detected.")
+                    addResult(getString(R.string.dns_dmarc_detected))
                 }
             }
         }
 
-        addResult(if (dnssecAuthenticated) "DNSSEC: resolver authenticated at least one response."
-                  else "DNSSEC: no authenticated response flag observed.")
-        if (answerCount == 0) addResult("No public DNS answers were returned.")
+        addResult(if (dnssecAuthenticated) getString(R.string.dnssec_authenticated)
+                  else getString(R.string.dnssec_not_authenticated))
+        if (answerCount == 0) addResult(getString(R.string.dns_no_answers))
     }
 
     private suspend fun getRdapInfo(startUrl: String) {
         val target = NetworkSafety.parseTarget(startUrl) ?: return
-        addResult("=== DOMAIN REGISTRATION (RDAP) ===", isTitle = true)
+        addResult(getString(R.string.section_rdap), isTitle = true)
 
         if (!DomainIntelligence.isDomainName(target.host)) {
-            addResult("RDAP lookup requires a domain name.")
+            addResult(getString(R.string.rdap_requires_domain))
             return
         }
 
         val bootstrapUrl = "https://data.iana.org/rdap/dns.json".toHttpUrl()
         val bootstrap = safeRequest(bootstrapUrl, maxBytes = MAX_RDAP_BOOTSTRAP_BYTES) ?: run {
-            addResult("IANA RDAP bootstrap registry is unavailable.")
+            addResult(getString(R.string.rdap_bootstrap_unavailable))
             return
         }
         if (bootstrap.code !in 200..299 || bootstrap.body.isBlank()) {
-            addResult("IANA RDAP bootstrap registry returned no usable data.")
+            addResult(getString(R.string.rdap_bootstrap_empty))
             return
         }
 
@@ -623,24 +623,24 @@ class MainActivity : AppCompatActivity() {
 
         val response = selectedResponse
         if (response == null) {
-            addResult("No public RDAP registration record was returned.")
+            addResult(getString(R.string.rdap_no_record))
             return
         }
 
         val summary = DomainIntelligence.parseRdapSummary(response.body)
         if (summary == null) {
-            addResult("RDAP response could not be parsed.")
+            addResult(getString(R.string.rdap_parse_error))
             return
         }
 
-        addResult("Domain: ${summary.name.ifBlank { selectedDomain.orEmpty() }}")
-        summary.handle?.let { addResult("Registry handle: $it") }
-        summary.registrar?.let { addResult("Registrar: $it") }
-        summary.status.take(8).forEach { addResult("Status: $it") }
+        addResult(getString(R.string.rdap_domain, summary.name.ifBlank { selectedDomain.orEmpty() }))
+        summary.handle?.let { addResult(getString(R.string.rdap_handle, it)) }
+        summary.registrar?.let { addResult(getString(R.string.rdap_registrar, it)) }
+        summary.status.take(8).forEach { addResult(getString(R.string.rdap_status, it)) }
         summary.events.take(8).forEach { event ->
-            addResult("${event.action}: ${event.date}")
+            addResult(getString(R.string.rdap_event, event.action, event.date))
         }
-        summary.nameservers.take(12).forEach { addResult("Nameserver: $it") }
+        summary.nameservers.take(12).forEach { addResult(getString(R.string.rdap_nameserver, it)) }
     }
 
     private suspend fun getReverseIp(startUrl: String) {
@@ -652,12 +652,12 @@ class MainActivity : AppCompatActivity() {
             val response = safeRequest(apiUrl, maxBytes = MAX_API_RESPONSE_BYTES) ?: return
             if (response.code !in 200..299 || response.body.isBlank()) return
 
-            addResult("=== REVERSE IP (${address.hostAddress}) ===", isTitle = true)
+            addResult(getString(R.string.section_reverse_ip, address.hostAddress), isTitle = true)
             response.body.lines().filter { it.isNotBlank() }.take(20).forEach {
-                addResult("Doména: ${it.trim().take(253)}")
+                addResult(getString(R.string.domain_result, it.trim().take(253)))
             }
         } catch (_: Exception) {
-            addResult("Reverse-IP služba není dostupná.")
+            addResult(getString(R.string.reverse_ip_unavailable))
         }
     }
 
@@ -678,21 +678,21 @@ class MainActivity : AppCompatActivity() {
             val timestamp = closest?.get("timestamp") as? String
             val archivedUrl = closest?.get("url") as? String
 
-            addResult("=== WAYBACK MACHINE ===", isTitle = true)
+            addResult(getString(R.string.section_wayback), isTitle = true)
             if (timestamp != null && timestamp.length >= 8 && timestamp.all(Char::isDigit)) {
                 val date = "${timestamp.substring(0, 4)}-${timestamp.substring(4, 6)}-${timestamp.substring(6, 8)}"
-                addResult("Poslední dostupný záznam: $date")
+                addResult(getString(R.string.wayback_last_snapshot, date))
             } else {
-                addResult("Pro tuto URL nebyl vrácen platný archivní záznam.")
+                addResult(getString(R.string.wayback_no_snapshot))
             }
             val safeArchivedUrl = archivedUrl?.toHttpUrlOrNull()
                 ?.let(NetworkSafety::withoutSensitiveComponents)
                 ?.toString()
             if (!safeArchivedUrl.isNullOrBlank()) {
-                addResult("Archivní URL: ${safeArchivedUrl.take(400)}")
+                addResult(getString(R.string.wayback_archive_url, safeArchivedUrl.take(400)))
             }
         } catch (_: Exception) {
-            addResult("Wayback Machine vrátila neplatnou odpověď nebo není dostupná.")
+            addResult(getString(R.string.wayback_unavailable))
         }
     }
 
@@ -702,12 +702,12 @@ class MainActivity : AppCompatActivity() {
             "/sitemap.xml",
             "/.well-known/security.txt"
         )
-        addResult("=== VEŘEJNÉ STANDARDNÍ CESTY ===", isTitle = true)
+        addResult(getString(R.string.section_public_paths), isTitle = true)
         for (path in publicPaths) {
             val url = base.newBuilder().encodedPath(path).query(null).fragment(null).build()
             val response = safeRequest(url, method = "HEAD", readBody = false) ?: continue
-            if (response.code in 200..299) addResult("$path — dostupné (HTTP ${response.code})")
-            else if (response.code == 401 || response.code == 403) addResult("$path — přístup omezen (HTTP ${response.code})")
+            if (response.code in 200..299) addResult(getString(R.string.path_available, path, response.code))
+            else if (response.code == 401 || response.code == 403) addResult(getString(R.string.path_restricted, path, response.code))
         }
     }
 
@@ -715,13 +715,13 @@ class MainActivity : AppCompatActivity() {
         val base = NetworkSafety.parseTarget(startUrl) ?: return
         val url = base.newBuilder().encodedPath("/robots.txt").query(null).fragment(null).build()
         val response = safeRequest(url, maxBytes = MAX_ROBOTS_BYTES)
-        addResult("=== ROBOTS.TXT ===", isTitle = true)
+        addResult(getString(R.string.section_robots), isTitle = true)
         if (response == null || response.code !in 200..299) {
-            addResult("robots.txt není veřejně dostupný.")
+            addResult(getString(R.string.robots_unavailable))
             return
         }
 
-        addResult("Soubor robots.txt byl nalezen.")
+        addResult(getString(R.string.robots_found))
         response.body.lineSequence()
             .filter { it.trim().startsWith("Disallow:", ignoreCase = true) }
             .take(100)
@@ -736,7 +736,7 @@ class MainActivity : AppCompatActivity() {
         while (matcher.find() && found.size < 40) found.add(matcher.group())
 
         if (found.isNotEmpty()) {
-            addResult("=== EMAILY ===", isTitle = true)
+            addResult(getString(R.string.section_emails), isTitle = true)
             found.forEach { addResult(it) }
         }
     }
@@ -751,7 +751,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (found.isNotEmpty()) {
-            addResult("=== TELEFONNÍ ČÍSLA ===", isTitle = true)
+            addResult(getString(R.string.section_phones), isTitle = true)
             found.forEach { addResult(it) }
         }
     }
@@ -770,19 +770,19 @@ class MainActivity : AppCompatActivity() {
         }.distinct().take(25)
 
         if (found.isNotEmpty()) {
-            addResult("=== SOCIÁLNÍ PROFILY ===", isTitle = true)
+            addResult(getString(R.string.section_social), isTitle = true)
             found.forEach { addResult(it) }
         }
     }
 
     private suspend fun addMeta(doc: org.jsoup.nodes.Document) {
         val meta = mutableListOf<String>()
-        doc.select("meta[name=generator]").first()?.let { meta.add("Generator: ${it.attr("content")}") }
-        doc.select("meta[name=description]").first()?.let { meta.add("Popis: ${it.attr("content")}") }
-        doc.select("meta[name=keywords]").first()?.let { meta.add("Klíčová slova: ${it.attr("content")}") }
+        doc.select("meta[name=generator]").first()?.let { meta.add(getString(R.string.meta_generator, it.attr("content"))) }
+        doc.select("meta[name=description]").first()?.let { meta.add(getString(R.string.meta_description, it.attr("content"))) }
+        doc.select("meta[name=keywords]").first()?.let { meta.add(getString(R.string.meta_keywords, it.attr("content"))) }
 
         if (meta.isNotEmpty()) {
-            addResult("=== META TAGY ===", isTitle = true)
+            addResult(getString(R.string.section_meta), isTitle = true)
             meta.forEach { addResult(it) }
         }
     }
@@ -796,14 +796,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (found.isNotEmpty()) {
-            addResult("=== HTML KOMENTÁŘE ===", isTitle = true)
+            addResult(getString(R.string.section_html_comments), isTitle = true)
             found.forEach { addResult(it.take(100)) }
         }
     }
 
         private suspend fun addHeaders(headers: Map<String, String>, html: String) {
         if (headers.isNotEmpty()) {
-            addResult("=== HTTP HLAVIČKY (CITLIVÉ HODNOTY REDIGOVÁNY) ===", isTitle = true)
+            addResult(getString(R.string.section_http_headers), isTitle = true)
             headers.entries.take(30).forEach { (key, value) ->
                 addResult("$key: ${value.take(MAX_HEADER_VALUE_LENGTH)}")
             }
@@ -816,7 +816,7 @@ class MainActivity : AppCompatActivity() {
         if (html.contains("react", ignoreCase = true)) tech.add("React")
 
         if (tech.isNotEmpty()) {
-            addResult("=== DETEKOVANÉ TECHNOLOGIE ===", isTitle = true)
+            addResult(getString(R.string.section_detected_technologies), isTitle = true)
             tech.distinct().forEach { addResult(it) }
         }
     }
@@ -834,11 +834,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (found.isNotEmpty()) {
-            addResult("=== MOŽNÉ API KLÍČE (HODNOTY JSOU MASKOVANÉ) ===", isTitle = true)
+            addResult(getString(R.string.section_api_keys), isTitle = true)
             found.take(5).forEach { secret ->
                 val masked = if (secret.length <= 8) "••••••••"
                     else "${secret.take(4)}…${secret.takeLast(4)}"
-                addResult("Možný klíč: $masked")
+                addResult(getString(R.string.possible_api_key, masked))
             }
         }
     }
@@ -852,7 +852,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (found.isNotEmpty()) {
-            addResult("=== CHYBOVÉ ZPRÁVY ===", isTitle = true)
+            addResult(getString(R.string.section_errors), isTitle = true)
             found.take(5).forEach { addResult(it) }
         }
     }
@@ -887,12 +887,12 @@ class MainActivity : AppCompatActivity() {
             }
 
             if (found.isNotEmpty()) {
-                addResult("=== VEŘEJNĚ EVIDOVANÉ SUBDOMÉNY ===", isTitle = true)
+                addResult(getString(R.string.section_subdomains), isTitle = true)
                 found.sorted().take(50).forEach { addResult(it) }
-                if (found.size > 50) addResult("Zobrazeno 50 z ${found.size} nalezených názvů.")
+                if (found.size > 50) addResult(getString(R.string.subdomains_truncated, found.size))
             }
         } catch (_: Exception) {
-            addResult("crt.sh vrátil neplatnou odpověď nebo není dostupný.")
+            addResult(getString(R.string.crtsh_unavailable))
         }
     }
 
@@ -913,7 +913,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_HEADER_VALUE_LENGTH = 512
         private const val MAX_RESULT_TEXT_LENGTH = 600
         private const val MAX_VISIBLE_RESULTS = 350
-        private const val USER_AGENT = "OSINT-Harvester/1.2 (+https://github.com/DSL-21/OsintHarvester)"
+        private const val USER_AGENT = "OSINT-Harvester/1.2.1 (+https://github.com/DSL-21/OsintHarvester)"
     }
 }
 
