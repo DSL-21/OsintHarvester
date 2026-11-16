@@ -24,12 +24,20 @@
             android:gravity="center_horizontal"
             android:layout_marginBottom="16dp"/>
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Používej pouze veřejné weby, které vlastníš nebo máš výslovně povolené analyzovat. Některé volitelné lookupy předávají doménu nebo IP veřejným OSINT službám."
+            android:textColor="#BDBDBD"
+            android:textSize="13sp"
+            android:layout_marginBottom="12dp"/>
+
         <!-- Vstupní pole pro URL -->
         <EditText
             android:id="@+id/url_input"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Zadej URL (např. example.com)"
+            android:hint="Veřejná HTTPS doména (např. example.com)"
             android:textColorHint="#9E9E9E"
             android:inputType="textUri"
             android:background="#2C2C2C"
@@ -47,6 +55,16 @@
             android:textColor="#FFFFFF"
             android:textStyle="bold"
             android:layout_marginBottom="16dp"/>
+
+        <Button
+            android:id="@+id/cancel_button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Zrušit sken"
+            android:backgroundTint="#616161"
+            android:textColor="#FFFFFF"
+            android:visibility="gone"
+            android:layout_marginBottom="12dp"/>
 
         <!-- Progress Bar a stavový text -->
         <ProgressBar
@@ -206,7 +224,7 @@
             <CheckBox android:id="@+id/file_detect_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Detekce skrytých souborů"
+                android:text="Veřejné metadata soubory"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
 
@@ -239,7 +257,7 @@
             <CheckBox android:id="@+id/api_keys_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Potenciální API klíče"
+                android:text="Možné API klíče (maskované)"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/error_check"
@@ -251,7 +269,7 @@
             <CheckBox android:id="@+id/directories_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Běžné adresáře"
+                android:text="Veřejné standardní cesty (HEAD)"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/robots_txt_check"
