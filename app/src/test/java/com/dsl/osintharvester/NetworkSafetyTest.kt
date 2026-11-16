@@ -87,6 +87,19 @@ class NetworkSafetyTest {
         assertFalse(redactedJson.contains("top-secret-value"))
         assertFalse(redactedJson.contains("my-password"))
         assertTrue(redactedJson.contains("[REDACTED]"))
+
+        val header = "Set-Cookie: session=private-session-value"
+        val redactedHeader = SensitiveTextRedactor.redact(header)
+        assertFalse(redactedHeader.contains("private-session-value"))
+
+        val privateKey = "private_key=\"private-key-material\""
+        val redactedPrivateKey = SensitiveTextRedactor.redact(privateKey)
+        assertFalse(redactedPrivateKey.contains("private-key-material"))
+
+        val apiKey = "AIza" + "A".repeat(35)
+        val redactedApiKey = SensitiveTextRedactor.redact(apiKey)
+        assertFalse(redactedApiKey.contains(apiKey))
+        assertTrue(redactedApiKey.contains("[REDACTED API KEY]"))
     }
 
     @Test
