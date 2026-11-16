@@ -67,7 +67,7 @@ internal object NetworkSafety {
             if (hasPrefix(bytes, ByteArray(12), 96)) return false
             if (hasPrefix(bytes, byteArrayOf(0xfc.toByte()), 7)) return false // ULA fc00::/7
             if (hasPrefix(bytes, byteArrayOf(0x20, 0x01, 0x0d, 0xb8.toByte()), 32)) return false // docs
-            if (hasPrefix(bytes, byteArrayOf(0x3f, 0xff.toByte()), 20)) return false // IPv6 documentation
+            if (hasPrefix(bytes, byteArrayOf(0x3f, 0xff.toByte(), 0x00), 20)) return false // IPv6 documentation
             if (hasPrefix(bytes, byteArrayOf(0x20, 0x01, 0x00, 0x00), 32)) return false // Teredo
             if (hasPrefix(bytes, byteArrayOf(0x20, 0x02), 16)) return false // 6to4
             if (hasPrefix(bytes, byteArrayOf(0x00, 0x64, 0xff.toByte(), 0x9b.toByte()), 96)) return false // NAT64
