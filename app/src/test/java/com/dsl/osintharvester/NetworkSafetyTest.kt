@@ -46,6 +46,7 @@ class NetworkSafetyTest {
     fun acceptsRepresentativePublicIpv4() {
         assertTrue(NetworkSafety.isPublicInternetAddress(InetAddress.getByName("1.1.1.1")))
         assertTrue(NetworkSafety.isPublicInternetAddress(InetAddress.getByName("8.8.8.8")))
+        assertTrue(NetworkSafety.isPublicInternetAddress(InetAddress.getByName("203.0.114.1")))
     }
 
     @Test
@@ -69,6 +70,9 @@ class NetworkSafetyTest {
     fun rejectsReservedIpv6SpaceOutsideGlobalUnicast() {
         assertFalse(NetworkSafety.isPublicInternetAddress(InetAddress.getByName("100::1")))
         assertFalse(NetworkSafety.isPublicInternetAddress(InetAddress.getByName("3fff::1")))
+        assertFalse(NetworkSafety.isPublicInternetAddress(InetAddress.getByName("64:ff9b::808:808")))
+        assertFalse(NetworkSafety.isPublicInternetAddress(InetAddress.getByName("64:ff9b:1::1")))
+        assertFalse(NetworkSafety.isPublicInternetAddress(InetAddress.getByName("::ffff:127.0.0.1")))
     }
 
     @Test
@@ -107,6 +111,8 @@ class NetworkSafetyTest {
         assertNull(NetworkSafety.parseTarget("host.test"))
         assertNull(NetworkSafety.parseTarget("example.example"))
         assertNull(NetworkSafety.parseTarget("service.onion"))
+        assertNull(NetworkSafety.parseTarget("example.arpa"))
+        assertNull(NetworkSafety.parseTarget("name.invalid"))
     }
 
     @Test
