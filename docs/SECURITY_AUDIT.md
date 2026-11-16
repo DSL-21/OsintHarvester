@@ -38,9 +38,19 @@ This is a targeted source and configuration review of the Android app, its URL h
 - Update OkHttp, jsoup, and Gson; add pinned GitHub Actions CI and Dependabot configuration.
 - Remove IDE/cache output from the tracked tree and ignore future generated artifacts.
 
+## Core and intelligence improvements for 1.2.0
+
+- Run independent collection modules concurrently with a fixed maximum of four module jobs.
+- Track every active OkHttp call in a thread-safe in-memory set so cancellation stops all concurrent requests.
+- Validate direct IPv4 and IPv6 target literals before connecting; IP literals cannot bypass DNS-based address checks.
+- Expand DNS collection through the Google Public DNS JSON-over-HTTPS API for A, AAAA, MX, NS, TXT, CNAME, SOA, CAA, and DMARC TXT records.
+- Resolve authoritative RDAP services from the IANA domain bootstrap registry and accept only HTTPS default-port endpoints.
+- Parse DNS and RDAP responses with bounded payload sizes.
+- Keep the design stateless: no database, persistent cache, automatic scan history, or background service was added.
+
 ## Remaining limitations
 
-- Some OSINT providers are external services. Optional lookups disclose the selected domain or public IP to the provider shown in the README.
+- Some OSINT providers are external services. Optional lookups disclose the selected domain or public IP to the provider shown in the README, including Google Public DNS, IANA bootstrap data, and the selected RDAP registry.
 - The API-key detector uses a small set of patterns and can produce false positives or miss secret formats; masking reduces accidental exposure but is not a complete secret-scanning engine.
 - Public IP range checks are conservative and may reject special-use or unusual addresses that are technically reachable.
 - Some sites reject HEAD requests or rate-limit automated clients, so certificate and metadata checks may report unavailable even when a browser can load the resource.
