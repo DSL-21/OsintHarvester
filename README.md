@@ -1,10 +1,12 @@
 # OSINT Harvester
 
-A native Android application for collecting publicly available website and domain intelligence.
+A native Android application with an English-only interface for collecting publicly available website and domain intelligence.
 
 OSINT Harvester is designed for **authorized, read-only reconnaissance** of public web properties. It collects visible metadata and public DNS / certificate / archive information; it is not a vulnerability exploitation or credential-testing tool.
 
 ## Features
+
+- English-only app interface and scan output
 
 - Extract publicly visible email addresses and phone numbers from HTML pages
 - Discover linked social profiles using parsed URL hostnames
