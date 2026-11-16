@@ -23,6 +23,21 @@ class NetworkSafetyTest {
     }
 
     @Test
+    fun rejectsPrivateIpLiteralsBeforeNetworkAccess() {
+        assertNull(NetworkSafety.parseTarget("https://127.0.0.1"))
+        assertNull(NetworkSafety.parseTarget("https://10.0.0.5"))
+        assertNull(NetworkSafety.parseTarget("https://192.168.1.1"))
+        assertNull(NetworkSafety.parseTarget("https://[::1]"))
+        assertNull(NetworkSafety.parseTarget("https://[fd00::1]"))
+    }
+
+    @Test
+    fun acceptsRepresentativePublicIpLiterals() {
+        assertNotNull(NetworkSafety.parseTarget("https://8.8.8.8"))
+        assertNotNull(NetworkSafety.parseTarget("https://[2606:4700:4700::1111]"))
+    }
+
+    @Test
     fun rejectsLocalAndPrivateTargetNames() {
         assertNull(NetworkSafety.parseTarget("localhost"))
         assertNull(NetworkSafety.parseTarget("router.local"))
