@@ -51,7 +51,7 @@ Requirements:
 Build and test:
 
 ```bash
-./gradlew lintDebug testDebugUnitTest assembleDebug
+bash ./gradlew lintDebug testDebugUnitTest assembleDebug
 ```
 
 On Windows:
