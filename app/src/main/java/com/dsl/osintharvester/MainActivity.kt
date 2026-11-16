@@ -464,8 +464,6 @@ class MainActivity : AppCompatActivity() {
     private suspend fun detectHiddenFiles(startUrl: String) {
         val base = NetworkSafety.parseTarget(startUrl) ?: return
         val publicFiles = listOf(
-            "/.well-known/security.txt",
-            "/sitemap.xml",
             "/favicon.ico",
             "/humans.txt",
             "/manifest.json"
@@ -597,9 +595,7 @@ class MainActivity : AppCompatActivity() {
         val publicPaths = listOf(
             "/robots.txt",
             "/sitemap.xml",
-            "/.well-known/security.txt",
-            "/manifest.json",
-            "/humans.txt"
+            "/.well-known/security.txt"
         )
         addResult("=== VEŘEJNÉ STANDARDNÍ CESTY ===", isTitle = true)
         for (path in publicPaths) {
