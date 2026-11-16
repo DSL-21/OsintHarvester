@@ -1,0 +1,101 @@
+name: Publish Android Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/build.gradle.kts"
+      - ".github/workflows/publish-release.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish versioned APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      - name: Run lint, unit tests, and build APKs
+        run: bash ./gradlew --no-daemon lintDebug testDebugUnitTest assembleDebug assembleRelease
+
+      - name: Prepare versioned APK and checksum
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_NAME="$(sed -nE 's/.*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' app/build.gradle.kts | head -n 1)"
+          if [[ -z "$VERSION_NAME" ]]; then
+            echo "Could not read app versionName from app/build.gradle.kts" >&2
+            exit 1
+          fi
+
+          APK_SOURCE="app/build/outputs/apk/debug/app-debug.apk"
+          APK_NAME="osintharvester-${VERSION_NAME}-debug.apk"
+          cp "$APK_SOURCE" "$APK_NAME"
+          sha256sum "$APK_NAME" > "$APK_NAME.sha256"
+
+          echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "apk=$APK_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.package.outputs.tag }}"
+          VERSION_NAME="${{ steps.package.outputs.version }}"
+          APK_NAME="${{ steps.package.outputs.apk }}"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; skipping to avoid replacing a published binary."
+            exit 0
+          fi
+
+          NOTES_FILE="$RUNNER_TEMP/release-notes.md"
+          cat > "$NOTES_FILE" <<EOF
+          ## OSINT Harvester $VERSION_NAME
+
+          This release is built from the main branch after Android lint and unit tests pass.
+
+          ### Security and reliability
+          - HTTPS-only targets on port 443 with checked public DNS answers
+          - Local, private, reserved, and special-use address ranges rejected
+          - Redirects disabled, bounded response sizes, timeouts, and crawl limits
+          - Same-origin crawling and secret/cookie redaction
+          - Public metadata checks only; no sensitive path guessing
+          - Android backup and cleartext traffic disabled
+
+          ### Signing note
+          This APK is **debug-signed by GitHub Actions** for direct testing. It is not a Play Store production-signed build. The CI debug signing key is ephemeral, so installing a later build may require uninstalling this copy first. A stable production release requires an owner-managed signing keystore stored securely as a GitHub Actions secret.
+          EOF
+
+          gh release create "$TAG" "$APK_NAME#OSINT Harvester $VERSION_NAME (debug-signed APK)" "$APK_NAME.sha256#SHA-256 checksum" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "OSINT Harvester $VERSION_NAME" \
+            --notes-file "$NOTES_FILE" \
+            --target "$GITHUB_SHA" \
+            --latest
