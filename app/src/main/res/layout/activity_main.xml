@@ -12,12 +12,12 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <!-- Logo a titulek -->
+        <!-- App title -->
         <TextView
             android:id="@+id/app_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="OSINT HARVESTER"
+            android:text="@string/app_name"
             android:textSize="28sp"
             android:textStyle="bold"
             android:textColor="#FFFFFF"
@@ -27,17 +27,17 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Passive public-source collection · HTTPS only · Authorized targets"
+            android:text="@string/app_tagline"
             android:textColor="#BDBDBD"
             android:textSize="13sp"
             android:layout_marginBottom="12dp"/>
 
-        <!-- Vstupní pole pro URL -->
+        <!-- Target URL -->
         <EditText
             android:id="@+id/url_input"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Veřejná HTTPS doména (např. example.com)"
+            android:hint="@string/target_url_hint"
             android:textColorHint="#9E9E9E"
             android:inputType="textUri"
             android:background="#2C2C2C"
@@ -45,12 +45,12 @@
             android:textColor="#E0E0E0"
             android:layout_marginBottom="8dp"/>
 
-        <!-- Tlačítko pro spuštění skenu -->
+        <!-- Scan controls -->
         <Button
             android:id="@+id/scan_button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Spustit Sken"
+            android:text="@string/scan_button"
             android:backgroundTint="#4CAF50"
             android:textColor="#FFFFFF"
             android:textStyle="bold"
@@ -60,13 +60,13 @@
             android:id="@+id/cancel_button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Zrušit sken"
+            android:text="@string/cancel_button"
             android:backgroundTint="#616161"
             android:textColor="#FFFFFF"
             android:visibility="gone"
             android:layout_marginBottom="12dp"/>
 
-        <!-- Progress Bar a stavový text -->
+        <!-- Progress and status -->
         <ProgressBar
             android:id="@+id/progress_bar"
             style="?android:attr/progressBarStyleHorizontal"
@@ -81,17 +81,17 @@
             android:id="@+id/status_text"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Připraveno k skenování"
+            android:text="@string/status_ready"
             android:textColor="#BDBDBD"
             android:textSize="14sp"
             android:gravity="center_horizontal"
             android:layout_marginBottom="16dp"/>
 
-        <!-- Základní volby skenování -->
+        <!-- Basic collection options -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Základní Skenování"
+            android:text="@string/section_basic"
             android:textColor="#FFC107"
             android:textSize="18sp"
             android:textStyle="bold"
@@ -108,46 +108,46 @@
             <CheckBox android:id="@+id/emails_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="E-maily"
+                android:text="@string/option_emails"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/phones_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Telefonní čísla"
+                android:text="@string/option_phones"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/social_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Profily sociálních médií"
+                android:text="@string/option_social"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/meta_tags_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Meta tagy"
+                android:text="@string/option_meta"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/comments_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Komentáře v HTML"
+                android:text="@string/option_comments"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/http_headers_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="HTTP Hlavičky &amp; Technologie"
+                android:text="@string/option_headers"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
         </LinearLayout>
 
-        <!-- Pokročilé OSINT -->
+        <!-- Advanced OSINT -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Pokročilé OSINT"
+            android:text="@string/section_advanced"
             android:textColor="#FFC107"
             android:textSize="18sp"
             android:textStyle="bold"
@@ -164,18 +164,18 @@
             <CheckBox android:id="@+id/subdomains_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Subdomény (crt.sh)"
+                android:text="@string/option_subdomains"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
 
             <CheckBox android:id="@+id/deep_crawl_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Hluboké skenování (Deep Crawl)"
+                android:text="@string/option_deep_crawl"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
 
-            <!-- PŘESUNUTÝ POSUVNÍK pro hloubku skenování -->
+            <!-- Crawl depth control -->
             <TextView
                 android:id="@+id/depth_label"
                 android:layout_width="match_parent"
@@ -184,7 +184,7 @@
                 android:layout_marginTop="4dp"
                 android:layout_marginBottom="4dp"
                 android:textColor="#BDBDBD"
-                android:text="Hloubka skenování: 1"
+                android:text="@string/crawl_depth_initial"
                 android:textSize="14sp"/>
 
             <SeekBar
@@ -198,43 +198,43 @@
             <CheckBox android:id="@+id/wayback_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Wayback Machine"
+                android:text="@string/option_wayback"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/reverse_ip_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Reverzní IP lookup"
+                android:text="@string/option_reverse_ip"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/dns_records_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="DNS záznamy"
+                android:text="@string/option_dns"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/whois_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Domain registration (RDAP)"
+                android:text="@string/option_rdap"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
 
-            <!-- NOVÝ CHECKBOX -->
+            <!-- Public metadata file lookup -->
             <CheckBox android:id="@+id/file_detect_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Veřejné metadata soubory"
+                android:text="@string/option_public_files"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
 
         </LinearLayout>
 
-        <!-- Bezpečnostní analýza -->
+        <!-- Security analysis -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Bezpečnostní Analýza"
+            android:text="@string/section_security"
             android:textColor="#FFC107"
             android:textSize="18sp"
             android:textStyle="bold"
@@ -251,40 +251,40 @@
             <CheckBox android:id="@+id/ssl_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="SSL certifikát"
+                android:text="@string/option_tls"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/api_keys_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Možné API klíče (maskované)"
+                android:text="@string/option_api_keys"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/error_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Chybové zprávy"
+                android:text="@string/option_errors"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/directories_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Veřejné standardní cesty (HEAD)"
+                android:text="@string/option_public_paths"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
             <CheckBox android:id="@+id/robots_txt_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="robots.txt a Disallow"
+                android:text="@string/option_robots"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
         </LinearLayout>
 
-        <!-- Výsledky -->
+        <!-- Scan results -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Výsledky Skenování"
+            android:text="@string/section_results"
             android:textColor="#FFC107"
             android:textSize="18sp"
             android:textStyle="bold"

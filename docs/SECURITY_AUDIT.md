@@ -48,6 +48,13 @@ This is a targeted source and configuration review of the Android app, its URL h
 - Parse DNS and RDAP responses with bounded payload sizes.
 - Keep the design stateless: no database, persistent cache, automatic scan history, or background service was added.
 
+## English UI update for 1.2.1
+
+- Move visible Android labels and controls into the default English string resources.
+- Translate scan progress, cancellation, errors, and all result headings/messages to English.
+- Keep the application English-only; no locale-specific strings or runtime translation dependency is added.
+- No scan, network, storage, or security behavior is changed by this language-only update.
+
 ## Remaining limitations
 
 - Some OSINT providers are external services. Optional lookups disclose the selected domain or public IP to the provider shown in the README, including Google Public DNS, IANA bootstrap data, and the selected RDAP registry.
