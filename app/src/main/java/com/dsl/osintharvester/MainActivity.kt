@@ -438,12 +438,15 @@ class MainActivity : AppCompatActivity() {
     private fun safeHeaders(headers: okhttp3.Headers): Map<String, String> {
         val safe = linkedMapOf<String, String>()
         headers.names().take(MAX_HEADER_COUNT).forEach { name ->
+            val lowerName = name.lowercase()
             val value = if (
-                name.equals("Set-Cookie", true) ||
-                name.equals("Set-Cookie2", true) ||
-                name.equals("Authorization", true) ||
-                name.equals("Proxy-Authenticate", true) ||
-                name.equals("WWW-Authenticate", true)
+                lowerName.contains("cookie") ||
+                lowerName.contains("authorization") ||
+                lowerName.contains("token") ||
+                lowerName.contains("secret") ||
+                lowerName.contains("api-key") ||
+                lowerName.contains("api_key") ||
+                lowerName.contains("authenticate")
             ) {
                 "<redacted>"
             } else {
