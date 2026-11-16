@@ -737,7 +737,7 @@ class MainActivity : AppCompatActivity() {
         val found = mutableListOf<String>()
         for (keyword in keywords) {
             val regex = Regex(".{0,60}$keyword.{0,60}", RegexOption.IGNORE_CASE)
-            regex.findAll(text).take(5).forEach { found.add(it.value.replace('\\n', ' ').trim()) }
+            regex.findAll(text).take(5).forEach { found.add(it.value.replace('\n', ' ').trim()) }
         }
 
         if (found.isNotEmpty()) {
