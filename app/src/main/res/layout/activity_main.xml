@@ -8,7 +8,6 @@
     android:background="@color/app_background"
     android:clipToPadding="false"
     android:fillViewport="true"
-    android:fitsSystemWindows="true"
     android:paddingStart="20dp"
     android:paddingTop="24dp"
     android:paddingEnd="20dp"
