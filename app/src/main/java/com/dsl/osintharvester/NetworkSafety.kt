@@ -25,6 +25,14 @@ internal object NetworkSafety {
 
         if (url.scheme != "https" || url.port != 443) return null
         if (url.username.isNotEmpty() || url.password.isNotEmpty()) return null
+
+        // IP literals do not pass through OkHttp's DNS resolver, so validate them here.
+        val isIpv4Literal = url.host.matches(Regex("""\d{1,3}(?:\.\d{1,3}){3}"""))
+        val isIpv6Literal = url.host.contains(':')
+        if (isIpv4Literal || isIpv6Literal) {
+            val address = runCatching { InetAddress.getByName(url.host) }.getOrNull() ?: return null
+            if (!isPublicInternetAddress(address)) return null
+        }
         if (url.host.equals("localhost", ignoreCase = true) ||
             url.host.endsWith(".localhost", ignoreCase = true) ||
             url.host.endsWith(".local", ignoreCase = true) ||
