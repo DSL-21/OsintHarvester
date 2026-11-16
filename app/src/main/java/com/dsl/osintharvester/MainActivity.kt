@@ -13,6 +13,8 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
@@ -22,6 +24,7 @@ import java.security.cert.X509Certificate
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentHashMap
 import okhttp3.Call
 import okhttp3.HttpUrl
 import okhttp3.ResponseBody
@@ -51,7 +54,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var waybackCk: CheckBox
     private lateinit var reverseIpCk: CheckBox
     private lateinit var dnsRecordsCk: CheckBox
-    private lateinit var whoisCk: CheckBox
+    private lateinit var rdapCk: CheckBox
     private lateinit var fileDetectCk: CheckBox
 
     /* Bezpečnostní checkboxy */
@@ -81,7 +84,7 @@ class MainActivity : AppCompatActivity() {
     private val gson = Gson()
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var scanJob: Job? = null
-    @Volatile private var activeCall: Call? = null
+    private val activeCalls = ConcurrentHashMap.newKeySet<Call>()
     private var activeOptions = ScanOptions()
     private var visibleResultCount = 0
 
@@ -104,14 +107,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         cancelButton.setOnClickListener {
-            activeCall?.cancel()
             scanJob?.cancel()
+            cancelActiveCalls()
         }
     }
 
     override fun onDestroy() {
-        activeCall?.cancel()
         scanJob?.cancel()
+        cancelActiveCalls()
         activityScope.cancel()
         super.onDestroy()
     }
@@ -139,7 +142,7 @@ class MainActivity : AppCompatActivity() {
         waybackCk = findViewById(R.id.wayback_check)
         reverseIpCk = findViewById(R.id.reverse_ip_check)
         dnsRecordsCk = findViewById(R.id.dns_records_check)
-        whoisCk = findViewById(R.id.whois_check)
+        rdapCk = findViewById(R.id.whois_check)
 
         fileDetectCk = findViewById(R.id.file_detect_check)
 
@@ -189,7 +192,7 @@ class MainActivity : AppCompatActivity() {
             wayback = waybackCk.isChecked,
             reverseIp = reverseIpCk.isChecked,
             dnsRecords = dnsRecordsCk.isChecked,
-            whois = whoisCk.isChecked,
+            rdap = rdapCk.isChecked,
             fileDetect = fileDetectCk.isChecked,
             apiKeys = apiKeysCk.isChecked,
             errors = errorCk.isChecked,
@@ -214,47 +217,60 @@ class MainActivity : AppCompatActivity() {
         val job = activityScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    val visited = mutableSetOf<String>()
+                    supervisorScope {
+                        val moduleScope = this
+                        val semaphore = Semaphore(MAX_PARALLEL_MODULES)
+                        val moduleJobs = mutableListOf<Deferred<Unit>>()
 
-                    if (anyBasicChecked(options) || options.deepCrawl) {
-                        updateStatus("Skenuji veřejný obsah...")
-                        crawlPage(target.toString(), 0, visited, target)
-                    }
-                    if (options.ssl) {
-                        updateStatus("Kontroluji TLS certifikát...")
-                        analyzeSslCertificate(target.toString())
-                    }
-                    if (options.dnsRecords) {
-                        updateStatus("Zjišťuji veřejné DNS adresy...")
-                        getDnsRecords(target.toString())
-                    }
-                    if (options.subdomains) {
-                        updateStatus("Hledám veřejně evidované subdomény...")
-                        getSubdomains(target.toString())
-                    }
-                    if (options.reverseIp) {
-                        updateStatus("Provádím veřejný reverse-IP lookup...")
-                        getReverseIp(target.toString())
-                    }
-                    if (options.wayback) {
-                        updateStatus("Dotazuji Wayback Machine...")
-                        getWaybackMachine(target.toString())
-                    }
-                    if (options.whois) {
-                        updateStatus("Získávám WHOIS informace...")
-                        getWhoisInfo(target.toString())
-                    }
-                    if (options.publicPaths) {
-                        updateStatus("Kontroluji veřejné metadata cesty...")
-                        testCommonDirectories(target.toString())
-                    }
-                    if (options.robots) {
-                        updateStatus("Čtu veřejný robots.txt...")
-                        checkRobotsTxt(target.toString())
-                    }
-                    if (options.fileDetect) {
-                        updateStatus("Hledám veřejné standardní soubory...")
-                        detectHiddenFiles(target.toString())
+                        fun scheduleModule(label: String, action: suspend () -> Unit) {
+                            moduleJobs += moduleScope.async {
+                                semaphore.withPermit {
+                                    try {
+                                        action()
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (error: Exception) {
+                                        addResult("$label: ${error.javaClass.simpleName}")
+                                    }
+                                }
+                            }
+                        }
+
+                        if (anyBasicChecked(options) || options.deepCrawl) {
+                            scheduleModule("Web scraping") {
+                                crawlPage(target.toString(), 0, mutableSetOf(), target)
+                            }
+                        }
+                        if (options.ssl) {
+                            scheduleModule("TLS analysis") { analyzeSslCertificate(target.toString()) }
+                        }
+                        if (options.dnsRecords) {
+                            scheduleModule("DNS intelligence") { getDnsRecords(target.toString()) }
+                        }
+                        if (options.rdap) {
+                            scheduleModule("RDAP lookup") { getRdapInfo(target.toString()) }
+                        }
+                        if (options.subdomains) {
+                            scheduleModule("Subdomain discovery") { getSubdomains(target.toString()) }
+                        }
+                        if (options.reverseIp) {
+                            scheduleModule("Reverse-IP lookup") { getReverseIp(target.toString()) }
+                        }
+                        if (options.wayback) {
+                            scheduleModule("Wayback lookup") { getWaybackMachine(target.toString()) }
+                        }
+                        if (options.publicPaths) {
+                            scheduleModule("Public metadata paths") { testCommonDirectories(target.toString()) }
+                        }
+                        if (options.robots) {
+                            scheduleModule("robots.txt") { checkRobotsTxt(target.toString()) }
+                        }
+                        if (options.fileDetect) {
+                            scheduleModule("Public metadata files") { detectHiddenFiles(target.toString()) }
+                        }
+
+                        updateStatus("Běží ${moduleJobs.size} modulů · max. $MAX_PARALLEL_MODULES souběžně")
+                        moduleJobs.awaitAll()
                     }
                 }
                 updateStatus("Skenování dokončeno.")
@@ -269,12 +285,16 @@ class MainActivity : AppCompatActivity() {
         }
         scanJob = job
         job.invokeOnCompletion { cause ->
-            if (cause is CancellationException) activeCall?.cancel()
+            if (cause is CancellationException) cancelActiveCalls()
         }
     }
 
-    private fun anyBasicChecked(options: ScanOptions): Boolean =
-        options.emails || options.phones || options.social || options.meta ||
+    private fun cancelActiveCalls() {
+        activeCalls.forEach { call -> call.cancel() }
+        activeCalls.clear()
+    }
+
+    private fun anyBasicChecked(options: ScanOptions): Boolean =        options.emails || options.phones || options.social || options.meta ||
             options.comments || options.headers || options.apiKeys || options.errors
 
     private suspend fun updateStatus(text: String) {
@@ -389,8 +409,9 @@ class MainActivity : AppCompatActivity() {
             .method(method, null)
             .build()
         val call = client.newCall(request)
-        activeCall = call
+        activeCalls.add(call)
         try {
+            currentCoroutineContext().ensureActive()
             call.execute().use { response ->
                 val body = if (readBody && response.isSuccessful) {
                     readLimitedBody(response.body, maxBytes)
@@ -413,7 +434,7 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {
             null
         } finally {
-            if (activeCall === call) activeCall = null
+            activeCalls.remove(call)
         }
     }
 
@@ -501,16 +522,124 @@ class MainActivity : AppCompatActivity() {
 
     private suspend fun getDnsRecords(startUrl: String) {
         val target = NetworkSafety.parseTarget(startUrl) ?: return
-        addResult("=== VEŘEJNÉ DNS ADRESY ===", isTitle = true)
-        try {
-            val addresses = PublicInternetDns().lookup(target.host).distinctBy { it.hostAddress }
-            addresses.forEach { address ->
-                val recordType = if (address is java.net.Inet4Address) "A" else "AAAA"
-                addResult("$recordType: ${address.hostAddress}")
-            }
-        } catch (_: Exception) {
-            addResult("DNS odpověď nebyla veřejná nebo ji nebylo možné načíst.")
+        addResult("=== DNS INTELLIGENCE (DNS OVER HTTPS) ===", isTitle = true)
+
+        if (!DomainIntelligence.isDomainName(target.host)) {
+            addResult("DNS record enumeration requires a domain name.")
+            return
         }
+
+        val queries = listOf(
+            target.host to "A",
+            target.host to "AAAA",
+            target.host to "MX",
+            target.host to "NS",
+            target.host to "TXT",
+            target.host to "CNAME",
+            target.host to "SOA",
+            target.host to "CAA",
+            "_dmarc.${target.host}" to "TXT"
+        )
+        val displayed = linkedSetOf<String>()
+        var dnssecAuthenticated = false
+        var answerCount = 0
+
+        for ((queryName, queryType) in queries) {
+            currentCoroutineContext().ensureActive()
+            val apiUrl = "https://dns.google/resolve".toHttpUrl()
+                .newBuilder()
+                .addQueryParameter("name", queryName)
+                .addQueryParameter("type", queryType)
+                .build()
+            val response = safeRequest(apiUrl, maxBytes = MAX_DNS_RESPONSE_BYTES) ?: continue
+            if (response.code !in 200..299 || response.body.isBlank()) continue
+
+            val lookup = DomainIntelligence.parseDnsResponse(response.body) ?: continue
+            if (lookup.status != 0) continue
+            dnssecAuthenticated = dnssecAuthenticated || lookup.authenticatedData
+
+            lookup.answers.forEach { answer ->
+                val key = "${answer.type}|${answer.name}|${answer.data}"
+                if (!displayed.add(key)) return@forEach
+
+                val recordType = DomainIntelligence.recordTypeName(answer.type)
+                val recordName = answer.name.trimEnd('.')
+                val label = if (queryName.startsWith("_dmarc.")) "DMARC TXT" else recordType
+                addResult("$label $recordName: ${answer.data.take(300)} (TTL ${answer.ttl}s)")
+                answerCount++
+
+                if (recordType == "TXT" && answer.data.contains("v=spf1", ignoreCase = true)) {
+                    addResult("SPF policy detected.")
+                }
+                if (recordType == "TXT" && answer.data.contains("v=DMARC1", ignoreCase = true)) {
+                    addResult("DMARC policy detected.")
+                }
+            }
+        }
+
+        addResult(if (dnssecAuthenticated) "DNSSEC: resolver authenticated at least one response."
+                  else "DNSSEC: no authenticated response flag observed.")
+        if (answerCount == 0) addResult("No public DNS answers were returned.")
+    }
+
+    private suspend fun getRdapInfo(startUrl: String) {
+        val target = NetworkSafety.parseTarget(startUrl) ?: return
+        addResult("=== DOMAIN REGISTRATION (RDAP) ===", isTitle = true)
+
+        if (!DomainIntelligence.isDomainName(target.host)) {
+            addResult("RDAP lookup requires a domain name.")
+            return
+        }
+
+        val bootstrapUrl = "https://data.iana.org/rdap/dns.json".toHttpUrl()
+        val bootstrap = safeRequest(bootstrapUrl, maxBytes = MAX_RDAP_BOOTSTRAP_BYTES) ?: run {
+            addResult("IANA RDAP bootstrap registry is unavailable.")
+            return
+        }
+        if (bootstrap.code !in 200..299 || bootstrap.body.isBlank()) {
+            addResult("IANA RDAP bootstrap registry returned no usable data.")
+            return
+        }
+
+        var selectedDomain: String? = null
+        var selectedResponse: SafeHttpResponse? = null
+
+        for (candidate in DomainIntelligence.registrationCandidates(target.host)) {
+            currentCoroutineContext().ensureActive()
+            val base = DomainIntelligence.findRdapBaseUrl(bootstrap.body, candidate)
+                ?.toHttpUrlOrNull() ?: continue
+            val rdapUrl = base.newBuilder()
+                .addPathSegment("domain")
+                .addPathSegment(candidate)
+                .build()
+            val response = safeRequest(rdapUrl, maxBytes = MAX_RDAP_RESPONSE_BYTES) ?: continue
+            if (response.code in 200..299 && response.body.isNotBlank()) {
+                selectedDomain = candidate
+                selectedResponse = response
+                break
+            }
+        }
+
+        val response = selectedResponse
+        if (response == null) {
+            addResult("No public RDAP registration record was returned.")
+            return
+        }
+
+        val summary = DomainIntelligence.parseRdapSummary(response.body)
+        if (summary == null) {
+            addResult("RDAP response could not be parsed.")
+            return
+        }
+
+        addResult("Domain: ${summary.name.ifBlank { selectedDomain.orEmpty() }}")
+        summary.handle?.let { addResult("Registry handle: $it") }
+        summary.registrar?.let { addResult("Registrar: $it") }
+        summary.status.take(8).forEach { addResult("Status: $it") }
+        summary.events.take(8).forEach { event ->
+            addResult("${event.action}: ${event.date}")
+        }
+        summary.nameservers.take(12).forEach { addResult("Nameserver: $it") }
     }
 
     private suspend fun getReverseIp(startUrl: String) {
@@ -563,30 +692,6 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (_: Exception) {
             addResult("Wayback Machine vrátila neplatnou odpověď nebo není dostupná.")
-        }
-    }
-
-    private suspend fun getWhoisInfo(startUrl: String) {
-        val target = NetworkSafety.parseTarget(startUrl) ?: return
-        val apiUrl = "https://api.hackertarget.com/whois/".toHttpUrl()
-            .newBuilder().addQueryParameter("q", target.host.removePrefix("www.")).build()
-        try {
-            val response = safeRequest(apiUrl, maxBytes = MAX_API_RESPONSE_BYTES) ?: return
-            if (response.code !in 200..299 || response.body.isBlank()) return
-
-            addResult("=== WHOIS INFORMACE ===", isTitle = true)
-            response.body.lineSequence()
-                .filter {
-                    it.contains("Registrar:", true) ||
-                        it.contains("Creation Date:", true) ||
-                        it.contains("Expiry Date:", true) ||
-                        it.contains("Organization:", true) ||
-                        it.contains("Name Server:", true)
-                }
-                .take(12)
-                .forEach { addResult(it.take(240)) }
-        } catch (_: Exception) {
-            addResult("WHOIS služba není dostupná.")
         }
     }
 
@@ -799,12 +904,16 @@ class MainActivity : AppCompatActivity() {
         private const val CRAWL_REQUEST_DELAY_MS = 200L
         private const val MAX_RESPONSE_BYTES = 1_048_576
         private const val MAX_API_RESPONSE_BYTES = 512 * 1024
+        private const val MAX_DNS_RESPONSE_BYTES = 32 * 1024
+        private const val MAX_RDAP_BOOTSTRAP_BYTES = 256 * 1024
+        private const val MAX_RDAP_RESPONSE_BYTES = 128 * 1024
+        private const val MAX_PARALLEL_MODULES = 4
         private const val MAX_ROBOTS_BYTES = 64 * 1024
         private const val MAX_HEADER_COUNT = 40
         private const val MAX_HEADER_VALUE_LENGTH = 512
         private const val MAX_RESULT_TEXT_LENGTH = 600
         private const val MAX_VISIBLE_RESULTS = 350
-        private const val USER_AGENT = "OSINT-Harvester/1.1 (+https://github.com/DSL-21/OsintHarvester)"
+        private const val USER_AGENT = "OSINT-Harvester/1.2 (+https://github.com/DSL-21/OsintHarvester)"
     }
 }
 
@@ -821,7 +930,7 @@ private data class ScanOptions(
     val wayback: Boolean = false,
     val reverseIp: Boolean = false,
     val dnsRecords: Boolean = false,
-    val whois: Boolean = false,
+    val rdap: Boolean = false,
     val fileDetect: Boolean = false,
     val apiKeys: Boolean = false,
     val errors: Boolean = false,
@@ -833,7 +942,7 @@ private data class ScanOptions(
     fun anySelected(): Boolean =
         emails || phones || social || meta || comments || headers ||
             subdomains || deepCrawl || wayback || reverseIp || dnsRecords ||
-            whois || fileDetect || apiKeys || errors || ssl || publicPaths || robots
+            rdap || fileDetect || apiKeys || errors || ssl || publicPaths || robots
 }
 
 private data class SafeHttpResponse(
