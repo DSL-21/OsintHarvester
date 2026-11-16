@@ -1,12 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">OSINT Harvester</string>
-    <string name="app_tagline">Passive public-source collection · HTTPS only · Authorized targets</string>
-    <string name="target_url_hint">Public HTTPS domain (e.g. example.com)</string>
+    <string name="brand_eyebrow">OPEN-SOURCE INTELLIGENCE</string>
+    <string name="logo_description">OSINT radar logo</string>
+    <string name="app_tagline">Passive reconnaissance · Public data · Authorized targets</string>
+    <string name="section_target">TARGET WEBSITE</string>
+    <string name="target_url_hint">example.com (HTTPS only)</string>
+    <string name="target_helper">Public HTTPS targets on standard port 443 only.</string>
     <string name="scan_button">Start Scan</string>
     <string name="cancel_button">Cancel Scan</string>
+    <string name="status_label">SCAN STATUS</string>
     <string name="status_ready">Ready to scan</string>
     <string name="section_basic">Basic Collection</string>
+    <string name="section_basic_hint">Public identity signals and page data</string>
     <string name="option_emails">Email Addresses</string>
     <string name="option_phones">Phone Numbers</string>
     <string name="option_social">Social Profiles</string>
@@ -14,6 +20,7 @@
     <string name="option_comments">HTML Comments</string>
     <string name="option_headers">HTTP Headers &amp; Technologies</string>
     <string name="section_advanced">Advanced OSINT</string>
+    <string name="section_advanced_hint">Domain, archive and discovery sources</string>
     <string name="option_subdomains">Subdomains (crt.sh)</string>
     <string name="option_deep_crawl">Deep Crawl</string>
     <string name="crawl_depth_initial">Crawl Depth: 1</string>
@@ -24,12 +31,16 @@
     <string name="option_rdap">Domain Registration (RDAP)</string>
     <string name="option_public_files">Public Metadata Files</string>
     <string name="section_security">Security Analysis</string>
+    <string name="section_security_hint">Public configuration and certificate signals</string>
     <string name="option_tls">TLS Certificate</string>
     <string name="option_api_keys">Possible API Keys (masked)</string>
     <string name="option_errors">Error Messages</string>
     <string name="option_public_paths">Public Standard Paths (HEAD)</string>
     <string name="option_robots">robots.txt &amp; Disallow Rules</string>
     <string name="section_results">Scan Results</string>
+    <string name="results_hint">Collected findings are displayed here.</string>
+    <string name="results_empty">No results yet. Start a scan to populate this panel.</string>
+    <string name="scan_disclaimer">Only assess systems you own or are explicitly authorized to test.</string>
 
     <string name="target_invalid_input">Enter a valid public HTTPS URL on port 443.</string>
     <string name="target_invalid">Invalid target. Use a public HTTPS website on port 443.</string>
