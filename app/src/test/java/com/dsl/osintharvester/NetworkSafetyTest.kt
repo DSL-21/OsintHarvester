@@ -1,5 +1,6 @@
 package com.dsl.osintharvester
 
+import okhttp3.Dns
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -8,6 +9,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.InetAddress
+import java.net.UnknownHostException
 
 class NetworkSafetyTest {
     @Test
@@ -81,6 +83,30 @@ class NetworkSafetyTest {
         assertFalse(redactedJson.contains("top-secret-value"))
         assertFalse(redactedJson.contains("my-password"))
         assertTrue(redactedJson.contains("[REDACTED]"))
+    }
+
+    @Test
+    fun rejectsMixedDnsAnswerContainingNonPublicAddress() {
+        val dns = PublicInternetDns(object : Dns {
+            override fun lookup(hostname: String): List<InetAddress> = listOf(
+                InetAddress.getByName("8.8.8.8"),
+                InetAddress.getByName("127.0.0.1")
+            )
+        })
+
+        try {
+            dns.lookup("example.com")
+            throw AssertionError("A mixed public/private DNS answer must be rejected")
+        } catch (_: UnknownHostException) {
+            // Expected: one private address invalidates the complete answer.
+        }
+    }
+
+    @Test
+    fun rejectsReservedHostnames() {
+        assertNull(NetworkSafety.parseTarget("host.test"))
+        assertNull(NetworkSafety.parseTarget("example.example"))
+        assertNull(NetworkSafety.parseTarget("service.onion"))
     }
 
     @Test
