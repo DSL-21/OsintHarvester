@@ -62,7 +62,8 @@ internal object DomainIntelligence {
         }
     }
 
-    fun parseDnsResponse(json: String): DnsLookupResult? = runCatching {
+    fun parseDnsResponse(json: String): DnsLookupResult? {
+        return try {
         val root = JsonParser.parseString(json).takeIf { it.isJsonObject }?.asJsonObject
             ?: return null
         val status = root.get("Status")?.asInt ?: return null
@@ -80,7 +81,10 @@ internal object DomainIntelligence {
             ?.take(64)
             .orEmpty()
         DnsLookupResult(status, authenticated, answers)
-    }.getOrNull()
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     /**
      * Implements the domain-label suffix match used by RFC 9224.
@@ -133,7 +137,8 @@ internal object DomainIntelligence {
         return bestUrl
     }
 
-    fun parseRdapSummary(json: String): RdapSummary? = runCatching {
+    fun parseRdapSummary(json: String): RdapSummary? {
+        return try {
         val root = JsonParser.parseString(json).takeIf { it.isJsonObject }?.asJsonObject
             ?: return null
 
@@ -179,7 +184,10 @@ internal object DomainIntelligence {
         ) return null
 
         RdapSummary(name, handle, registrar, statuses, events, nameservers)
-    }.getOrNull()
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     fun recordTypeName(type: Int): String = when (type) {
         1 -> "A"
