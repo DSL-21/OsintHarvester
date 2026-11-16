@@ -1,9 +1,6 @@
 package com.dsl.osintharvester
 
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
@@ -17,20 +14,25 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
-import java.net.InetAddress
 import java.security.cert.X509Certificate
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+import okhttp3.Call
+import okhttp3.HttpUrl
+import okhttp3.ResponseBody
 import java.util.regex.Pattern
-import javax.net.ssl.HttpsURLConnection
 
 class MainActivity : AppCompatActivity() {
 
     /* UI komponenty */
     private lateinit var urlInput: EditText
     private lateinit var scanButton: Button
+    private lateinit var cancelButton: Button
     private lateinit var progressBar: ProgressBar
     private lateinit var statusText: TextView
     private lateinit var resultsContainer: LinearLayout
@@ -64,37 +66,61 @@ class MainActivity : AppCompatActivity() {
     private lateinit var depthLabel: TextView
 
     /* Síť a data */
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .dns(PublicInternetDns())
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(12, TimeUnit.SECONDS)
+        .writeTimeout(8, TimeUnit.SECONDS)
+        .callTimeout(20, TimeUnit.SECONDS)
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .retryOnConnectionFailure(false)
+        .build()
     private val gson = Gson()
-    private val results = mutableListOf<String>()
+    private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var scanJob: Job? = null
+    @Volatile private var activeCall: Call? = null
+    private var activeOptions = ScanOptions()
+    private var visibleResultCount = 0
 
     /* Crawling nastavení */
-    private val MAX_PAGES = 20
     private var MAX_DEPTH = 1
-    private val DEPTH_LIMIT = 5
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
         initViews()
 
         scanButton.setOnClickListener {
-            val urlTxt = urlInput.text.toString().trim()
-            if (urlTxt.isEmpty()) {
-                statusText.text = "Zadej URL!"
+            val entered = urlInput.text.toString().trim()
+            val target = NetworkSafety.parseTarget(entered)
+            if (target == null) {
+                statusText.text = "Zadej platnou veřejnou HTTPS adresu na portu 443."
                 return@setOnClickListener
             }
-            startCompleteScan(if (!urlTxt.startsWith("http")) "https://$urlTxt" else urlTxt)
+            startCompleteScan(target.toString())
+        }
+
+        cancelButton.setOnClickListener {
+            activeCall?.cancel()
+            scanJob?.cancel()
         }
     }
 
-    /**
+    override fun onDestroy() {
+        activeCall?.cancel()
+        scanJob?.cancel()
+        activityScope.cancel()
+        super.onDestroy()
+    }
+
+        /**
      * Inicializuje všechny UI komponenty z XML layoutu.
      */
     private fun initViews() {
         urlInput = findViewById(R.id.url_input)
         scanButton = findViewById(R.id.scan_button)
+        cancelButton = findViewById(R.id.cancel_button)
         progressBar = findViewById(R.id.progress_bar)
         statusText = findViewById(R.id.status_text)
         resultsContainer = findViewById(R.id.results_container)
@@ -142,81 +168,112 @@ class MainActivity : AppCompatActivity() {
      * Spustí kompletní asynchronní sken na zadané URL.
      */
     private fun startCompleteScan(startUrl: String) {
+        val target = NetworkSafety.parseTarget(startUrl)
+        if (target == null) {
+            statusText.text = "Neplatná cílová adresa. Použij veřejný HTTPS web na portu 443."
+            return
+        }
+        if (scanJob?.isActive == true) return
+
+        val options = ScanOptions(
+            emails = emailsCk.isChecked,
+            phones = phonesCk.isChecked,
+            social = socialCk.isChecked,
+            meta = metaCk.isChecked,
+            comments = commentsCk.isChecked,
+            headers = headersCk.isChecked,
+            subdomains = subdomainsCk.isChecked,
+            deepCrawl = deepCrawlCk.isChecked,
+            wayback = waybackCk.isChecked,
+            reverseIp = reverseIpCk.isChecked,
+            dnsRecords = dnsRecordsCk.isChecked,
+            whois = whoisCk.isChecked,
+            fileDetect = fileDetectCk.isChecked,
+            apiKeys = apiKeysCk.isChecked,
+            errors = errorCk.isChecked,
+            ssl = sslCk.isChecked,
+            publicPaths = directoriesCk.isChecked,
+            robots = robotsTxtCk.isChecked,
+            maxDepth = MAX_DEPTH.coerceIn(1, DEPTH_LIMIT)
+        )
+        if (!options.anySelected()) {
+            statusText.text = "Nejdřív vyber alespoň jednu kontrolu."
+            return
+        }
+
+        activeOptions = options
+        visibleResultCount = 0
         progressBar.visibility = View.VISIBLE
         scanButton.isEnabled = false
+        cancelButton.visibility = View.VISIBLE
         resultsContainer.removeAllViews()
-        statusText.text = "🚀 Spouštím kompletní OSINT sken..."
+        statusText.text = "Spouštím pasivní OSINT sběr..."
 
-        CoroutineScope(Dispatchers.IO).launch {
+        val job = activityScope.launch {
             try {
-                val visited = mutableSetOf<String>()
+                withContext(Dispatchers.IO) {
+                    val visited = mutableSetOf<String>()
 
-                if (anyBasicChecked() || deepCrawlCk.isChecked) {
-                    updateStatus("📄 Skenuji webový obsah...")
-                    crawlPage(startUrl, 0, visited)
+                    if (anyBasicChecked(options) || options.deepCrawl) {
+                        updateStatus("Skenuji veřejný obsah...")
+                        crawlPage(target.toString(), 0, visited, target)
+                    }
+                    if (options.ssl) {
+                        updateStatus("Kontroluji TLS certifikát...")
+                        analyzeSslCertificate(target.toString())
+                    }
+                    if (options.dnsRecords) {
+                        updateStatus("Zjišťuji veřejné DNS adresy...")
+                        getDnsRecords(target.toString())
+                    }
+                    if (options.subdomains) {
+                        updateStatus("Hledám veřejně evidované subdomény...")
+                        getSubdomains(target.toString())
+                    }
+                    if (options.reverseIp) {
+                        updateStatus("Provádím veřejný reverse-IP lookup...")
+                        getReverseIp(target.toString())
+                    }
+                    if (options.wayback) {
+                        updateStatus("Dotazuji Wayback Machine...")
+                        getWaybackMachine(target.toString())
+                    }
+                    if (options.whois) {
+                        updateStatus("Získávám WHOIS informace...")
+                        getWhoisInfo(target.toString())
+                    }
+                    if (options.publicPaths) {
+                        updateStatus("Kontroluji veřejné metadata cesty...")
+                        testCommonDirectories(target.toString())
+                    }
+                    if (options.robots) {
+                        updateStatus("Čtu veřejný robots.txt...")
+                        checkRobotsTxt(target.toString())
+                    }
+                    if (options.fileDetect) {
+                        updateStatus("Hledám veřejné standardní soubory...")
+                        detectHiddenFiles(target.toString())
+                    }
                 }
-
-                if (sslCk.isChecked) {
-                    updateStatus("🔐 Analyzuji SSL certifikát...")
-                    analyzeSslCertificate(startUrl)
-                }
-
-                if (dnsRecordsCk.isChecked) {
-                    updateStatus("📡 Získávám DNS záznamy...")
-                    getDnsRecords(startUrl)
-                }
-
-                if (subdomainsCk.isChecked) {
-                    updateStatus("🌐 Hledám subdomény...")
-                    getSubdomains(startUrl)
-                }
-
-                if (reverseIpCk.isChecked) {
-                    updateStatus("🔄 Provádím reverse IP lookup...")
-                    getReverseIp(startUrl)
-                }
-
-                if (waybackCk.isChecked) {
-                    updateStatus("⏰ Hledám historické záznamy...")
-                    getWaybackMachine(startUrl)
-                }
-
-                if (whoisCk.isChecked) {
-                    updateStatus("🔍 Získávám WHOIS informace...")
-                    getWhoisInfo(startUrl)
-                }
-
-                if (directoriesCk.isChecked) {
-                    updateStatus("📁 Testuji běžné adresáře...")
-                    testCommonDirectories(startUrl)
-                }
-
-                if (robotsTxtCk.isChecked) {
-                    updateStatus("🤖 Hledám robots.txt a disallow pravidla...")
-                    checkRobotsTxt(startUrl)
-                }
-
-                if (fileDetectCk.isChecked) {
-                    updateStatus("📂 Hledám skryté soubory...")
-                    detectHiddenFiles(startUrl)
-                }
-
-                finishScan()
-
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    resultsContainer.addView(createTextView("❌ Kritická chyba: ${e.message}"))
-                    finishScan()
-                }
+                updateStatus("Skenování dokončeno.")
+            } catch (cancelled: CancellationException) {
+                updateStatus("Skenování bylo zrušeno.")
+            } catch (error: Exception) {
+                addResult("Chyba skenování: ${error.javaClass.simpleName}")
+                updateStatus("Skenování skončilo s chybou.")
+            } finally {
+                withContext(NonCancellable) { finishScan() }
             }
+        }
+        scanJob = job
+        job.invokeOnCompletion { cause ->
+            if (cause is CancellationException) activeCall?.cancel()
         }
     }
 
-    private fun anyBasicChecked(): Boolean {
-        return emailsCk.isChecked || phonesCk.isChecked || socialCk.isChecked ||
-                metaCk.isChecked || commentsCk.isChecked || headersCk.isChecked ||
-                apiKeysCk.isChecked || errorCk.isChecked
-    }
+    private fun anyBasicChecked(options: ScanOptions): Boolean =
+        options.emails || options.phones || options.social || options.meta ||
+            options.comments || options.headers || options.apiKeys || options.errors
 
     private suspend fun updateStatus(text: String) {
         withContext(Dispatchers.Main) { statusText.text = text }
@@ -224,10 +281,21 @@ class MainActivity : AppCompatActivity() {
 
     private suspend fun finishScan() {
         withContext(Dispatchers.Main) {
-            if (resultsContainer.childCount == 0) resultsContainer.addView(createTextView("ℹ️ Žádné výsledky nenalezeny"))
+            if (resultsContainer.childCount == 0) {
+                resultsContainer.addView(createTextView("Žádné výsledky nebyly nalezeny."))
+            }
             progressBar.visibility = View.GONE
-            statusText.text = "✅ Skenování dokončeno!"
             scanButton.isEnabled = true
+            cancelButton.visibility = View.GONE
+        }
+    }
+
+    private suspend fun addResult(text: String, isTitle: Boolean = false) {
+        withContext(Dispatchers.Main) {
+            if (visibleResultCount >= MAX_VISIBLE_RESULTS) return@withContext
+            val safeText = SensitiveTextRedactor.redact(text).take(MAX_RESULT_TEXT_LENGTH)
+            resultsContainer.addView(createTextView(safeText, isTitle))
+            visibleResultCount++
         }
     }
 
@@ -246,373 +314,402 @@ class MainActivity : AppCompatActivity() {
     }
 
     /* ========== ZÁKLADNÍ CRAWLING ========== */
-    private suspend fun crawlPage(url: String, depth: Int, visited: MutableSet<String>) {
-        if (visited.size >= MAX_PAGES || visited.contains(url) || depth > MAX_DEPTH) return
-        visited.add(url)
+    private suspend fun crawlPage(
+        url: String,
+        depth: Int,
+        visited: MutableSet<String>,
+        scanOrigin: HttpUrl
+    ) {
+        if (visited.size >= MAX_PAGES || depth > activeOptions.maxDepth) return
 
-        val (html, headers) = download(url) ?: return
-        val doc = Jsoup.parse(html)
-        val text = doc.text()
+        val parsed = NetworkSafety.parseTarget(url) ?: return
+        val safeUrl = NetworkSafety.withoutSensitiveComponents(parsed)
+        val key = safeUrl.toString()
+        if (!visited.add(key)) return
 
-        if (emailsCk.isChecked) addEmails(html, text)
-        if (phonesCk.isChecked) addPhones(text)
-        if (socialCk.isChecked) addSocial(doc)
-        if (metaCk.isChecked) addMeta(doc)
-        if (commentsCk.isChecked) addComments(html)
-        if (headersCk.isChecked) addHeaders(headers, html)
-        if (apiKeysCk.isChecked) addApiKeys(html)
-        if (errorCk.isChecked) addErrors(text)
+        val downloaded = download(key) ?: return
+        val html = downloaded.first
+        val headers = downloaded.second
+        val document = Jsoup.parse(html, key)
+        val text = document.text()
 
-        if (deepCrawlCk.isChecked && depth < MAX_DEPTH) {
-            val baseHost = url.toHttpUrl().host
-            val links = doc.select("a[href]").map { it.absUrl("href") }
-                .filter { it.startsWith("http") && it.toHttpUrl().host == baseHost }
-                .take(15)
-            for (link in links) crawlPage(link, depth + 1, visited)
+        if (activeOptions.emails) addEmails(html, text)
+        if (activeOptions.phones) addPhones(text)
+        if (activeOptions.social) addSocial(document)
+        if (activeOptions.meta) addMeta(document)
+        if (activeOptions.comments) addComments(html)
+        if (activeOptions.headers) addHeaders(headers, html)
+        if (activeOptions.apiKeys) addApiKeys(html)
+        if (activeOptions.errors) addErrors(text)
+
+        if (activeOptions.deepCrawl && depth < activeOptions.maxDepth && visited.size < MAX_PAGES) {
+            val links = document.select("a[href]").mapNotNull { element ->
+                val candidate = safeUrl.resolve(element.attr("href")) ?: return@mapNotNull null
+                val sameOrigin = candidate.scheme == scanOrigin.scheme &&
+                    candidate.host == scanOrigin.host && candidate.port == scanOrigin.port
+                if (sameOrigin) NetworkSafety.withoutSensitiveComponents(candidate).toString() else null
+            }.distinct().take(MAX_LINKS_PER_PAGE)
+
+            for (link in links) {
+                if (visited.size >= MAX_PAGES) break
+                delay(CRAWL_REQUEST_DELAY_MS)
+                crawlPage(link, depth + 1, visited, scanOrigin)
+            }
         }
     }
 
-    private fun download(url: String): Pair<String, Map<String,String>>? {
-        return try {
-            val request = Request.Builder()
-                .url(url)
-                .addHeader("User-Agent", "OSINT-Harvester-Pro/2.0")
-                .build()
-            client.newCall(request).execute().use { response ->
-                val body = response.body?.string() ?: return null
-                val headers = response.headers.toMultimap().mapValues { it.value.joinToString() }
-                body to headers
+    private suspend fun download(url: String): Pair<String, Map<String, String>>? {
+        val target = NetworkSafety.parseTarget(url) ?: return null
+        val response = safeRequest(NetworkSafety.withoutSensitiveComponents(target)) ?: return null
+        if (response.code !in 200..299) return null
+
+        val contentType = response.headers.entries
+            .firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }
+            ?.value.orEmpty()
+        if (contentType.isNotBlank() &&
+            !contentType.contains("text/html", ignoreCase = true) &&
+            !contentType.contains("application/xhtml+xml", ignoreCase = true)
+        ) return null
+
+        return response.body to response.headers
+    }
+
+    private suspend fun safeRequest(
+        url: HttpUrl,
+        method: String = "GET",
+        maxBytes: Int = MAX_RESPONSE_BYTES,
+        readBody: Boolean = method == "GET"
+    ): SafeHttpResponse? = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "text/html,application/xhtml+xml,application/json,text/plain,*/*")
+            .method(method, null)
+            .build()
+        val call = client.newCall(request)
+        activeCall = call
+        try {
+            call.execute().use { response ->
+                val body = if (readBody && response.isSuccessful) {
+                    readLimitedBody(response.body, maxBytes)
+                } else {
+                    ""
+                }
+                val certificate = response.handshake?.peerCertificates
+                    ?.firstOrNull() as? X509Certificate
+
+                SafeHttpResponse(
+                    code = response.code,
+                    body = body,
+                    headers = safeHeaders(response.headers),
+                    certificate = certificate,
+                    finalUrl = response.request.url
+                )
             }
-        } catch (e: Exception) { null }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        } finally {
+            if (activeCall === call) activeCall = null
+        }
+    }
+
+    private fun readLimitedBody(body: ResponseBody?, maxBytes: Int): String {
+        if (body == null) return ""
+        if (body.contentLength() > maxBytes) throw IOException("Response exceeds size limit")
+
+        val output = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+        body.byteStream().use { input ->
+            val buffer = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                if (total > maxBytes) throw IOException("Response exceeds size limit")
+                output.write(buffer, 0, count)
+            }
+        }
+        val charset = body.contentType()?.charset(Charsets.UTF_8) ?: Charsets.UTF_8
+        return String(output.toByteArray(), charset)
+    }
+
+    private fun safeHeaders(headers: okhttp3.Headers): Map<String, String> {
+        val safe = linkedMapOf<String, String>()
+        headers.names().take(MAX_HEADER_COUNT).forEach { name ->
+            val lowerName = name.lowercase()
+            val value = if (
+                lowerName.contains("cookie") ||
+                lowerName.contains("authorization") ||
+                lowerName.contains("token") ||
+                lowerName.contains("secret") ||
+                lowerName.contains("api-key") ||
+                lowerName.contains("api_key") ||
+                lowerName.contains("authenticate")
+            ) {
+                "<redacted>"
+            } else {
+                headers.values(name).take(3).joinToString(", ") { it.take(MAX_HEADER_VALUE_LENGTH) }
+                    .take(MAX_HEADER_VALUE_LENGTH)
+            }
+            safe[name] = value
+        }
+        return safe
     }
 
     /* ========== NOVÉ FUNKCE pro pokročilý OSINT ========== */
     private suspend fun detectHiddenFiles(startUrl: String) {
-        val commonFiles = listOf(
-            "sitemap.xml", "favicon.ico", "crossdomain.xml", "security.txt", "humans.txt"
+        val base = NetworkSafety.parseTarget(startUrl) ?: return
+        val publicFiles = listOf(
+            "/.well-known/security.txt",
+            "/sitemap.xml",
+            "/favicon.ico",
+            "/humans.txt",
+            "/manifest.json"
         )
-        val host = startUrl.toHttpUrl().host
+        addResult("=== VEŘEJNÉ STANDARDNÍ SOUBORY ===", isTitle = true)
 
-        withContext(Dispatchers.Main) {
-            resultsContainer.addView(createTextView("=== 📂 HLEDANÉ SOUBORY ===", isTitle = true))
-        }
-
-        for (file in commonFiles) {
-            try {
-                val testUrl = startUrl.toHttpUrl().newBuilder().addPathSegment(file).build()
-                val request = Request.Builder()
-                    .url(testUrl)
-                    .addHeader("User-Agent", "OSINT-Harvester-Pro/2.0")
-                    .build()
-                val response = client.newCall(request).execute()
-
-                withContext(Dispatchers.Main) {
-                    if (response.isSuccessful) {
-                        resultsContainer.addView(createTextView("✅ $file - nalezen na $host"))
-                    }
-                }
-            } catch (e: Exception) {
-                // Tichý pád, pokud soubor neexistuje
+        for (path in publicFiles) {
+            val fileUrl = base.newBuilder().encodedPath(path).query(null).fragment(null).build()
+            val response = safeRequest(fileUrl, method = "HEAD", readBody = false) ?: continue
+            if (response.code in 200..299) {
+                addResult("Nalezeno: $path (HTTP ${response.code})")
             }
         }
     }
 
-    /* ========== POKROČILÉ FUNKCE (původní) ========== */
     private suspend fun analyzeSslCertificate(startUrl: String) {
-        try {
-            val host = startUrl.toHttpUrl().host
-            val connection = java.net.URL("https://$host").openConnection() as HttpsURLConnection
-            connection.connect()
-            val certificates = connection.serverCertificates
-
-            withContext(Dispatchers.Main) {
-                resultsContainer.addView(createTextView("=== 🔐 SSL CERTIFIKÁT ===", isTitle = true))
-                if (certificates.isNotEmpty()) {
-                    val cert = certificates[0] as X509Certificate
-                    resultsContainer.addView(createTextView("🏢 Vydavatel: ${cert.issuerDN}"))
-                    resultsContainer.addView(createTextView("📅 Platný od: ${cert.notBefore}"))
-                    resultsContainer.addView(createTextView("📅 Platný do: ${cert.notAfter}"))
-                    resultsContainer.addView(createTextView("🔑 Algoritmus: ${cert.sigAlgName}"))
-                }
-            }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                resultsContainer.addView(createTextView("❌ SSL chyba: ${e.message}"))
-            }
+        val target = NetworkSafety.parseTarget(startUrl) ?: return
+        val response = safeRequest(
+            NetworkSafety.withoutSensitiveComponents(target),
+            method = "HEAD",
+            readBody = false
+        )
+        addResult("=== TLS CERTIFIKÁT ===", isTitle = true)
+        val cert = response?.certificate
+        if (cert == null) {
+            addResult("Certifikát nelze bezpečně načíst nebo server nepodporuje HEAD.")
+            return
         }
+        addResult("Vydavatel: ${cert.issuerX500Principal.name.take(220)}")
+        addResult("Platný od: ${cert.notBefore}")
+        addResult("Platný do: ${cert.notAfter}")
+        addResult("Algoritmus podpisu: ${cert.sigAlgName}")
+        addResult("Subject: ${cert.subjectX500Principal.name.take(220)}")
     }
 
     private suspend fun getDnsRecords(startUrl: String) {
+        val target = NetworkSafety.parseTarget(startUrl) ?: return
+        addResult("=== VEŘEJNÉ DNS ADRESY ===", isTitle = true)
         try {
-            val host = startUrl.toHttpUrl().host
-            val addresses = InetAddress.getAllByName(host)
-
-            withContext(Dispatchers.Main) {
-                resultsContainer.addView(createTextView("=== 📡 DNS ZÁZNAMY ===", isTitle = true))
-                addresses.forEach { addr ->
-                    resultsContainer.addView(createTextView("🌐 A: ${addr.hostAddress}"))
-                }
+            val addresses = PublicInternetDns().lookup(target.host).distinctBy { it.hostAddress }
+            addresses.forEach { address ->
+                val recordType = if (address is java.net.Inet4Address) "A" else "AAAA"
+                addResult("$recordType: ${address.hostAddress}")
             }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                resultsContainer.addView(createTextView("❌ DNS chyba: ${e.message}"))
-            }
+        } catch (_: Exception) {
+            addResult("DNS odpověď nebyla veřejná nebo ji nebylo možné načíst.")
         }
     }
 
     private suspend fun getReverseIp(startUrl: String) {
+        val target = NetworkSafety.parseTarget(startUrl) ?: return
         try {
-            val host = startUrl.toHttpUrl().host.removePrefix("www.")
-            val ip = InetAddress.getByName(host).hostAddress
-            val apiUrl = "https://api.hackertarget.com/reverseiplookup/?q=$ip"
+            val address = PublicInternetDns().lookup(target.host).firstOrNull() ?: return
+            val apiUrl = "https://api.hackertarget.com/reverseiplookup/".toHttpUrl()
+                .newBuilder().addQueryParameter("q", address.hostAddress).build()
+            val response = safeRequest(apiUrl, maxBytes = MAX_API_RESPONSE_BYTES) ?: return
+            if (response.code !in 200..299 || response.body.isBlank()) return
 
-            val request = Request.Builder().url(apiUrl).build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: ""
-
-            withContext(Dispatchers.Main) {
-                if (body.isNotEmpty() && !body.contains("error")) {
-                    resultsContainer.addView(createTextView("=== 🔄 REVERSE IP ($ip) ===", isTitle = true))
-                    body.lines().take(20).forEach { domain ->
-                        if (domain.trim().isNotEmpty()) {
-                            resultsContainer.addView(createTextView("🌐 $domain"))
-                        }
-                    }
-                }
+            addResult("=== REVERSE IP (${address.hostAddress}) ===", isTitle = true)
+            response.body.lines().filter { it.isNotBlank() }.take(20).forEach {
+                addResult("Doména: ${it.trim().take(253)}")
             }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                resultsContainer.addView(createTextView("❌ Reverse IP chyba: ${e.message}"))
-            }
+        } catch (_: Exception) {
+            addResult("Reverse-IP služba není dostupná.")
         }
     }
 
-    // NOVÁ, opravená verze pro Wayback Machine V3
     private suspend fun getWaybackMachine(startUrl: String) {
-        try {
-            // Změna na HTTPS pro vyřešení chyby CLEARTEXT
-            val apiUrl = "https://archive.org/wayback/available?url=$startUrl"
+        val target = NetworkSafety.parseTarget(startUrl) ?: return
+        val cleanTarget = target.newBuilder().encodedPath("/").query(null).fragment(null).build().toString()
+        val apiUrl = "https://archive.org/wayback/available".toHttpUrl()
+            .newBuilder().addQueryParameter("url", cleanTarget).build()
 
-            val request = Request.Builder().url(apiUrl).build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: ""
+        try {
+            val response = safeRequest(apiUrl, maxBytes = MAX_API_RESPONSE_BYTES) ?: return
+            if (response.code !in 200..299 || response.body.isBlank()) return
 
             val type = object : TypeToken<Map<String, Any>>() {}.type
-            val data: Map<String, Any> = gson.fromJson(body, type)
+            val data: Map<String, Any> = gson.fromJson(response.body, type)
+            val snapshots = data["archived_snapshots"] as? Map<*, *>
+            val closest = snapshots?.get("closest") as? Map<*, *>
+            val timestamp = closest?.get("timestamp") as? String
+            val archivedUrl = closest?.get("url") as? String
 
-            withContext(Dispatchers.Main) {
-                resultsContainer.addView(createTextView("=== ⏰ WAYBACK MACHINE ===", isTitle = true))
-
-                if (data.containsKey("archived_snapshots")) {
-                    val snapshots = data["archived_snapshots"] as Map<String, Any>
-                    val closestSnapshot = snapshots["closest"] as Map<String, String>
-                    val timestamp = closestSnapshot["timestamp"]
-                    val url = closestSnapshot["url"]
-                    val date = "${timestamp?.substring(0,4)}-${timestamp?.substring(4,6)}-${timestamp?.substring(6,8)}"
-                    resultsContainer.addView(createTextView("📅 Poslední záznam: $date"))
-                    resultsContainer.addView(createTextView("🔗 URL: $url"))
-                } else {
-                    resultsContainer.addView(createTextView("❌ Žádné historické záznamy nebyly nalezeny."))
-                }
+            addResult("=== WAYBACK MACHINE ===", isTitle = true)
+            if (timestamp != null && timestamp.length >= 8 && timestamp.all(Char::isDigit)) {
+                val date = "${timestamp.substring(0, 4)}-${timestamp.substring(4, 6)}-${timestamp.substring(6, 8)}"
+                addResult("Poslední dostupný záznam: $date")
+            } else {
+                addResult("Pro tuto URL nebyl vrácen platný archivní záznam.")
             }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                resultsContainer.addView(createTextView("❌ Wayback chyba: ${e.message}"))
-            }
+            if (!archivedUrl.isNullOrBlank()) addResult("Archivní URL: ${archivedUrl.take(400)}")
+        } catch (_: Exception) {
+            addResult("Wayback Machine vrátila neplatnou odpověď nebo není dostupná.")
         }
     }
 
     private suspend fun getWhoisInfo(startUrl: String) {
+        val target = NetworkSafety.parseTarget(startUrl) ?: return
+        val apiUrl = "https://api.hackertarget.com/whois/".toHttpUrl()
+            .newBuilder().addQueryParameter("q", target.host.removePrefix("www.")).build()
         try {
-            val host = startUrl.toHttpUrl().host.removePrefix("www.")
-            val apiUrl = "https://api.hackertarget.com/whois/?q=$host"
+            val response = safeRequest(apiUrl, maxBytes = MAX_API_RESPONSE_BYTES) ?: return
+            if (response.code !in 200..299 || response.body.isBlank()) return
 
-            val request = Request.Builder().url(apiUrl).build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: ""
-
-            withContext(Dispatchers.Main) {
-                if (body.isNotEmpty() && !body.contains("error")) {
-                    resultsContainer.addView(createTextView("=== 🔍 WHOIS INFORMACE ===", isTitle = true))
-                    val lines = body.lines().filter {
-                        it.contains("Registrar:") || it.contains("Creation Date:") ||
-                                it.contains("Expiry Date:") || it.contains("Organization:")
-                    }
-                    lines.take(10).forEach { line ->
-                        resultsContainer.addView(createTextView("ℹ️ $line"))
-                    }
+            addResult("=== WHOIS INFORMACE ===", isTitle = true)
+            response.body.lineSequence()
+                .filter {
+                    it.contains("Registrar:", true) ||
+                        it.contains("Creation Date:", true) ||
+                        it.contains("Expiry Date:", true) ||
+                        it.contains("Organization:", true) ||
+                        it.contains("Name Server:", true)
                 }
-            }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                resultsContainer.addView(createTextView("❌ WHOIS chyba: ${e.message}"))
-            }
+                .take(12)
+                .forEach { addResult(it.take(240)) }
+        } catch (_: Exception) {
+            addResult("WHOIS služba není dostupná.")
         }
     }
 
     private suspend fun testCommonDirectories(startUrl: String) {
-        val commonDirs = listOf(
-            "/admin", "/wp-admin", "/phpmyadmin", "/robots.txt", "/sitemap.xml",
-            "/.git", "/.env", "/backup", "/config", "/api"
+        val base = NetworkSafety.parseTarget(startUrl) ?: return
+        val publicPaths = listOf(
+            "/robots.txt",
+            "/sitemap.xml",
+            "/.well-known/security.txt",
+            "/manifest.json",
+            "/humans.txt"
         )
-
-        withContext(Dispatchers.Main) {
-            resultsContainer.addView(createTextView("=== 📁 BĚŽNÉ ADRESÁŘE ===", isTitle = true))
-        }
-
-        for (dir in commonDirs) {
-            try {
-                val testUrl = startUrl.trimEnd('/') + dir
-                val request = Request.Builder()
-                    .url(testUrl)
-                    .addHeader("User-Agent", "OSINT-Harvester-Pro/2.0")
-                    .build()
-                val response = client.newCall(request).execute()
-
-                withContext(Dispatchers.Main) {
-                    when (response.code) {
-                        200 -> resultsContainer.addView(createTextView("✅ $dir - PŘÍSTUPNÝ"))
-                        403 -> resultsContainer.addView(createTextView("🔒 $dir - ZAKÁZÁN"))
-                        401 -> resultsContainer.addView(createTextView("🔐 $dir - VYŽADUJE AUTENTIFIKACI"))
-                    }
-                }
-            } catch (e: Exception) {
-                // Tiše ignorujeme nedostupné adresáře
-            }
+        addResult("=== VEŘEJNÉ STANDARDNÍ CESTY ===", isTitle = true)
+        for (path in publicPaths) {
+            val url = base.newBuilder().encodedPath(path).query(null).fragment(null).build()
+            val response = safeRequest(url, method = "HEAD", readBody = false) ?: continue
+            if (response.code in 200..299) addResult("$path — dostupné (HTTP ${response.code})")
+            else if (response.code == 401 || response.code == 403) addResult("$path — přístup omezen (HTTP ${response.code})")
         }
     }
 
     private suspend fun checkRobotsTxt(startUrl: String) {
-        try {
-            val url = startUrl.toHttpUrl().newBuilder().addPathSegment("robots.txt").build()
-            val request = Request.Builder().url(url).build()
-            val response = client.newCall(request).execute()
-
-            withContext(Dispatchers.Main) {
-                if (response.isSuccessful) {
-                    val body = response.body?.string()
-                    if (!body.isNullOrEmpty()) {
-                        resultsContainer.addView(createTextView("=== 🤖 ROBOTS.TXT ===", isTitle = true))
-                        resultsContainer.addView(createTextView("✅ Soubor robots.txt nalezen."))
-                        body.lines().forEach { line ->
-                            if (line.trim().startsWith("Disallow:", ignoreCase = true)) {
-                                resultsContainer.addView(createTextView("🚫 ${line.trim()}"))
-                            }
-                        }
-                    } else {
-                        resultsContainer.addView(createTextView("❌ robots.txt nalezen, ale je prázdný."))
-                    }
-                } else {
-                    resultsContainer.addView(createTextView("❌ robots.txt nebyl nalezen (kód ${response.code})."))
-                }
-            }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                resultsContainer.addView(createTextView("❌ Chyba při hledání robots.txt: ${e.message}"))
-            }
+        val base = NetworkSafety.parseTarget(startUrl) ?: return
+        val url = base.newBuilder().encodedPath("/robots.txt").query(null).fragment(null).build()
+        val response = safeRequest(url, maxBytes = MAX_ROBOTS_BYTES)
+        addResult("=== ROBOTS.TXT ===", isTitle = true)
+        if (response == null || response.code !in 200..299) {
+            addResult("robots.txt není veřejně dostupný.")
+            return
         }
+
+        addResult("Soubor robots.txt byl nalezen.")
+        response.body.lineSequence()
+            .filter { it.trim().startsWith("Disallow:", ignoreCase = true) }
+            .take(100)
+            .forEach { addResult(it.trim().take(300)) }
     }
 
     /* ========== PŮVODNÍ DETEKTORY ========== */
     private suspend fun addEmails(html: String, text: String) {
         val pattern = Pattern.compile("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}")
         val matcher = pattern.matcher("$html $text")
-        val found = mutableSetOf<String>()
-        while (matcher.find()) found.add(matcher.group())
+        val found = linkedSetOf<String>()
+        while (matcher.find() && found.size < 40) found.add(matcher.group())
 
-        withContext(Dispatchers.Main) {
-            if (found.isNotEmpty()) {
-                resultsContainer.addView(createTextView("=== 📧 EMAILY ===", isTitle = true))
-                found.forEach { resultsContainer.addView(createTextView("📧 $it")) }
-            }
+        if (found.isNotEmpty()) {
+            addResult("=== EMAILY ===", isTitle = true)
+            found.forEach { addResult(it) }
         }
     }
 
-    private suspend fun addPhones(text: String) {
+        private suspend fun addPhones(text: String) {
         val pattern = Pattern.compile("(\\+?\\d{1,4}[\\s-]?)?\\(?\\d{3}\\)?[\\s-]?\\d{3}[\\s-]?\\d{3,4}")
         val matcher = pattern.matcher(text)
-        val found = mutableSetOf<String>()
-        while (matcher.find()) {
+        val found = linkedSetOf<String>()
+        while (matcher.find() && found.size < 40) {
             val phone = matcher.group().trim()
             if (phone.replace("\\D".toRegex(), "").length >= 7) found.add(phone)
         }
 
-        withContext(Dispatchers.Main) {
-            if (found.isNotEmpty()) {
-                resultsContainer.addView(createTextView("=== 📞 TELEFONY ===", isTitle = true))
-                found.forEach { resultsContainer.addView(createTextView("📞 $it")) }
-            }
+        if (found.isNotEmpty()) {
+            addResult("=== TELEFONNÍ ČÍSLA ===", isTitle = true)
+            found.forEach { addResult(it) }
         }
     }
 
-    private suspend fun addSocial(doc: org.jsoup.nodes.Document) {
-        val domains = listOf("facebook.com","fb.com","twitter.com","x.com",
-            "linkedin.com","instagram.com","youtube.com","tiktok.com")
-        val found = mutableSetOf<String>()
-        doc.select("a[href]").forEach { link ->
-            val href = link.attr("href")
-            if (domains.any { href.contains(it) }) found.add(href)
-        }
+        private suspend fun addSocial(doc: org.jsoup.nodes.Document) {
+        val domains = listOf(
+            "facebook.com", "fb.com", "twitter.com", "x.com", "linkedin.com",
+            "instagram.com", "youtube.com", "tiktok.com"
+        )
+        val found = doc.select("a[href]").mapNotNull { link ->
+            val parsed = link.absUrl("href").toHttpUrlOrNull() ?: return@mapNotNull null
+            val host = parsed.host.removePrefix("www.")
+            if (domains.any { host == it || host.endsWith(".$it") }) {
+                parsed.toString().take(300)
+            } else null
+        }.distinct().take(25)
 
-        withContext(Dispatchers.Main) {
-            if (found.isNotEmpty()) {
-                resultsContainer.addView(createTextView("=== 🔗 SOCIÁLNÍ MÉDIA ===", isTitle = true))
-                found.forEach { resultsContainer.addView(createTextView("🔗 $it")) }
-            }
+        if (found.isNotEmpty()) {
+            addResult("=== SOCIÁLNÍ PROFILY ===", isTitle = true)
+            found.forEach { addResult(it) }
         }
     }
 
     private suspend fun addMeta(doc: org.jsoup.nodes.Document) {
         val meta = mutableListOf<String>()
-        doc.select("meta[name=generator]").first()?.let { meta.add("🔧 Generator: ${it.attr("content")}") }
-        doc.select("meta[name=description]").first()?.let { meta.add("📝 Popis: ${it.attr("content")}") }
-        doc.select("meta[name=keywords]").first()?.let { meta.add("🏷️ Klíčová slova: ${it.attr("content")}") }
+        doc.select("meta[name=generator]").first()?.let { meta.add("Generator: ${it.attr("content")}") }
+        doc.select("meta[name=description]").first()?.let { meta.add("Popis: ${it.attr("content")}") }
+        doc.select("meta[name=keywords]").first()?.let { meta.add("Klíčová slova: ${it.attr("content")}") }
 
-        withContext(Dispatchers.Main) {
-            if (meta.isNotEmpty()) {
-                resultsContainer.addView(createTextView("=== 🏷️ META TAGY ===", isTitle = true))
-                meta.forEach { resultsContainer.addView(createTextView(it)) }
-            }
+        if (meta.isNotEmpty()) {
+            addResult("=== META TAGY ===", isTitle = true)
+            meta.forEach { addResult(it) }
         }
     }
 
-    private suspend fun addComments(html: String) {
+        private suspend fun addComments(html: String) {
         val matcher = Pattern.compile("<!--([\\s\\S]*?)-->").matcher(html)
         val found = mutableListOf<String>()
-        while (matcher.find()) {
+        while (matcher.find() && found.size < 5) {
             val comment = matcher.group(1).trim()
             if (comment.length > 3) found.add(comment)
         }
 
-        withContext(Dispatchers.Main) {
-            if (found.isNotEmpty()) {
-                resultsContainer.addView(createTextView("=== 💬 KOMENTÁŘE ===", isTitle = true))
-                found.take(5).forEach {
-                    resultsContainer.addView(createTextView("💬 ${if (it.length > 100) it.take(100) + "..." else it}"))
-                }
-            }
+        if (found.isNotEmpty()) {
+            addResult("=== HTML KOMENTÁŘE ===", isTitle = true)
+            found.forEach { addResult(it.take(100)) }
         }
     }
 
-    private suspend fun addHeaders(headers: Map<String,String>, html: String) {
-        withContext(Dispatchers.Main) {
-            if (headers.isNotEmpty()) {
-                resultsContainer.addView(createTextView("=== 📑 HTTP HLAVIČKY ===", isTitle = true))
-                headers.forEach { (k, v) -> resultsContainer.addView(createTextView("📑 $k: $v")) }
+        private suspend fun addHeaders(headers: Map<String, String>, html: String) {
+        if (headers.isNotEmpty()) {
+            addResult("=== HTTP HLAVIČKY (CITLIVÉ HODNOTY REDIGOVÁNY) ===", isTitle = true)
+            headers.entries.take(30).forEach { (key, value) ->
+                addResult("$key: ${value.take(MAX_HEADER_VALUE_LENGTH)}")
             }
         }
 
         val tech = mutableListOf<String>()
-        if (html.contains("/wp-content/")) tech.add("WordPress")
-        if (html.contains("Joomla!")) tech.add("Joomla")
-        if (html.contains("jquery")) tech.add("jQuery")
-        if (html.contains("react")) tech.add("React")
+        if (html.contains("/wp-content/", ignoreCase = true)) tech.add("WordPress")
+        if (html.contains("Joomla!", ignoreCase = true)) tech.add("Joomla")
+        if (html.contains("jquery", ignoreCase = true)) tech.add("jQuery")
+        if (html.contains("react", ignoreCase = true)) tech.add("React")
 
-        withContext(Dispatchers.Main) {
-            if (tech.isNotEmpty()) {
-                resultsContainer.addView(createTextView("=== 🛠️ TECHNOLOGIE ===", isTitle = true))
-                tech.distinct().forEach { resultsContainer.addView(createTextView("🛠️ $it")) }
-            }
+        if (tech.isNotEmpty()) {
+            addResult("=== DETEKOVANÉ TECHNOLOGIE ===", isTitle = true)
+            tech.distinct().forEach { addResult(it) }
         }
     }
 
@@ -625,13 +722,15 @@ class MainActivity : AppCompatActivity() {
         val found = mutableSetOf<String>()
         for (pattern in patterns) {
             val matcher = Pattern.compile(pattern).matcher(html)
-            while (matcher.find()) found.add(matcher.group())
+            while (matcher.find() && found.size < 20) found.add(matcher.group())
         }
 
-        withContext(Dispatchers.Main) {
-            if (found.isNotEmpty()) {
-                resultsContainer.addView(createTextView("=== 🔑 API KLÍČE ===", isTitle = true))
-                found.take(5).forEach { resultsContainer.addView(createTextView("🔑 $it")) }
+        if (found.isNotEmpty()) {
+            addResult("=== MOŽNÉ API KLÍČE (HODNOTY JSOU MASKOVANÉ) ===", isTitle = true)
+            found.take(5).forEach { secret ->
+                val masked = if (secret.length <= 8) "••••••••"
+                    else "${secret.take(4)}…${secret.takeLast(4)}"
+                addResult("Možný klíč: $masked")
             }
         }
     }
@@ -641,49 +740,103 @@ class MainActivity : AppCompatActivity() {
         val found = mutableListOf<String>()
         for (keyword in keywords) {
             val regex = Regex(".{0,60}$keyword.{0,60}", RegexOption.IGNORE_CASE)
-            regex.findAll(text).forEach { found.add(it.value.replace('\n', ' ').trim()) }
+            regex.findAll(text).take(5).forEach { found.add(it.value.replace('\n', ' ').trim()) }
         }
 
-        withContext(Dispatchers.Main) {
-            if (found.isNotEmpty()) {
-                resultsContainer.addView(createTextView("=== ❌ CHYBOVÉ ZPRÁVY ===", isTitle = true))
-                found.take(5).forEach { resultsContainer.addView(createTextView("❌ $it")) }
-            }
+        if (found.isNotEmpty()) {
+            addResult("=== CHYBOVÉ ZPRÁVY ===", isTitle = true)
+            found.take(5).forEach { addResult(it) }
         }
     }
 
-    private suspend fun getSubdomains(startUrl: String) {
+        private suspend fun getSubdomains(startUrl: String) {
+        val target = NetworkSafety.parseTarget(startUrl) ?: return
+        val host = target.host.removePrefix("www.").lowercase()
+        val apiUrl = "https://crt.sh/".toHttpUrl()
+            .newBuilder().addQueryParameter("q", "%.$host").addQueryParameter("output", "json").build()
+
         try {
-            val host = startUrl.toHttpUrl().host.removePrefix("www.")
-            val apiUrl = "https://crt.sh/?q=%25.$host&output=json"
-            val request = Request.Builder().url(apiUrl).build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: ""
+            val response = safeRequest(apiUrl, maxBytes = MAX_API_RESPONSE_BYTES) ?: return
+            if (response.code !in 200..299 || response.body.isBlank()) return
 
-            val listType = object : TypeToken<List<Map<String,String>>>() {}.type
-            val records: List<Map<String,String>> = gson.fromJson(body, listType)
+            val listType = object : TypeToken<List<Map<String, String>>>() {}.type
+            val records: List<Map<String, String>> = gson.fromJson(response.body, listType)
+            val found = linkedSetOf<String>()
 
-            val found = mutableSetOf<String>()
-            for (record in records) {
-                record["common_name"]?.let {
-                    if (it.endsWith(".$host") && !it.startsWith("*.")) found.add(it)
-                }
-                record["name_value"]?.split('\n')?.forEach { name ->
-                    if (name.endsWith(".$host") && !name.startsWith("*.")) found.add(name)
-                }
+            fun consider(candidate: String) {
+                val name = candidate.trim().trimEnd('.').lowercase()
+                if (name.startsWith("*.") || name == host || !name.endsWith(".$host")) return
+                if (name.length > 253 || name.split('.').any { label ->
+                    label.isBlank() || label.length > 63 ||
+                        !label.matches(Regex("[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"))
+                }) return
+                found.add(name)
             }
 
-            withContext(Dispatchers.Main) {
-                if (found.isNotEmpty()) {
-                    resultsContainer.addView(createTextView("=== 🌐 SUBDOMÉNY ===", isTitle = true))
-                    found.sorted().take(50).forEach { resultsContainer.addView(createTextView("🌐 $it")) }
-                    if (found.size > 50) resultsContainer.addView(createTextView("... a dalších ${found.size - 50}"))
-                }
+            records.forEach { record ->
+                record["common_name"]?.let(::consider)
+                record["name_value"]?.split('\n')?.forEach(::consider)
             }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                resultsContainer.addView(createTextView("❌ Subdomény chyba: ${e.message}"))
+
+            if (found.isNotEmpty()) {
+                addResult("=== VEŘEJNĚ EVIDOVANÉ SUBDOMÉNY ===", isTitle = true)
+                found.sorted().take(50).forEach { addResult(it) }
+                if (found.size > 50) addResult("Zobrazeno 50 z ${found.size} nalezených názvů.")
             }
+        } catch (_: Exception) {
+            addResult("crt.sh vrátil neplatnou odpověď nebo není dostupný.")
         }
+    }
+
+    
+    companion object {
+        private const val MAX_PAGES = 20
+        private const val DEPTH_LIMIT = 5
+        private const val MAX_LINKS_PER_PAGE = 10
+        private const val CRAWL_REQUEST_DELAY_MS = 200L
+        private const val MAX_RESPONSE_BYTES = 1_048_576
+        private const val MAX_API_RESPONSE_BYTES = 512 * 1024
+        private const val MAX_ROBOTS_BYTES = 64 * 1024
+        private const val MAX_HEADER_COUNT = 40
+        private const val MAX_HEADER_VALUE_LENGTH = 512
+        private const val MAX_RESULT_TEXT_LENGTH = 600
+        private const val MAX_VISIBLE_RESULTS = 350
+        private const val USER_AGENT = "OSINT-Harvester/1.1 (+https://github.com/DSL-21/OsintHarvester)"
     }
 }
+
+
+private data class ScanOptions(
+    val emails: Boolean = false,
+    val phones: Boolean = false,
+    val social: Boolean = false,
+    val meta: Boolean = false,
+    val comments: Boolean = false,
+    val headers: Boolean = false,
+    val subdomains: Boolean = false,
+    val deepCrawl: Boolean = false,
+    val wayback: Boolean = false,
+    val reverseIp: Boolean = false,
+    val dnsRecords: Boolean = false,
+    val whois: Boolean = false,
+    val fileDetect: Boolean = false,
+    val apiKeys: Boolean = false,
+    val errors: Boolean = false,
+    val ssl: Boolean = false,
+    val publicPaths: Boolean = false,
+    val robots: Boolean = false,
+    val maxDepth: Int = 1
+) {
+    fun anySelected(): Boolean =
+        emails || phones || social || meta || comments || headers ||
+            subdomains || deepCrawl || wayback || reverseIp || dnsRecords ||
+            whois || fileDetect || apiKeys || errors || ssl || publicPaths || robots
+}
+
+private data class SafeHttpResponse(
+    val code: Int,
+    val body: String,
+    val headers: Map<String, String>,
+    val certificate: X509Certificate?,
+    val finalUrl: HttpUrl
+)
