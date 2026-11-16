@@ -67,6 +67,8 @@ class MainActivity : AppCompatActivity() {
 
     /* Síť a data */
     private val client = OkHttpClient.Builder()
+        // Do not let a system proxy bypass DNS validation for the requested target.
+        .proxy(java.net.Proxy.NO_PROXY)
         .dns(PublicInternetDns())
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
@@ -555,7 +557,12 @@ class MainActivity : AppCompatActivity() {
             } else {
                 addResult("Pro tuto URL nebyl vrácen platný archivní záznam.")
             }
-            if (!archivedUrl.isNullOrBlank()) addResult("Archivní URL: ${archivedUrl.take(400)}")
+            val safeArchivedUrl = archivedUrl?.toHttpUrlOrNull()
+                ?.let(NetworkSafety::withoutSensitiveComponents)
+                ?.toString()
+            if (!safeArchivedUrl.isNullOrBlank()) {
+                addResult("Archivní URL: ${safeArchivedUrl.take(400)}")
+            }
         } catch (_: Exception) {
             addResult("Wayback Machine vrátila neplatnou odpověď nebo není dostupná.")
         }
@@ -657,7 +664,7 @@ class MainActivity : AppCompatActivity() {
             val parsed = link.absUrl("href").toHttpUrlOrNull() ?: return@mapNotNull null
             val host = parsed.host.removePrefix("www.")
             if (domains.any { host == it || host.endsWith(".$it") }) {
-                parsed.toString().take(300)
+                NetworkSafety.withoutSensitiveComponents(parsed).toString().take(300)
             } else null
         }.distinct().take(25)
 
@@ -683,7 +690,7 @@ class MainActivity : AppCompatActivity() {
         val matcher = Pattern.compile("<!--([\\s\\S]*?)-->").matcher(html)
         val found = mutableListOf<String>()
         while (matcher.find() && found.size < 5) {
-            val comment = matcher.group(1).trim()
+            val comment = matcher.group(1)?.trim().orEmpty()
             if (comment.length > 3) found.add(comment)
         }
 
