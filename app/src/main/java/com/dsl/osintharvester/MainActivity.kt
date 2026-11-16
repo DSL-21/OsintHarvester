@@ -293,19 +293,10 @@ class MainActivity : AppCompatActivity() {
     private suspend fun addResult(text: String, isTitle: Boolean = false) {
         withContext(Dispatchers.Main) {
             if (visibleResultCount >= MAX_VISIBLE_RESULTS) return@withContext
-            val safeText = redactSensitiveText(text).take(MAX_RESULT_TEXT_LENGTH)
+            val safeText = SensitiveTextRedactor.redact(text).take(MAX_RESULT_TEXT_LENGTH)
             resultsContainer.addView(createTextView(safeText, isTitle))
             visibleResultCount++
         }
-    }
-
-    private fun redactSensitiveText(value: String): String {
-        val assignmentPattern = Regex(
-            "(?i)\\b(api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|authorization)\\b(\\s*[=:]\\s*)([^,\\s&;\\\"']+)"
-        )
-        return value
-            .replace(assignmentPattern) { match -> "${match.groupValues[1]}${match.groupValues[2]}[REDACTED]" }
-            .replace(Regex("(?i)\\bBearer\\s+[A-Za-z0-9._~+/=-]+"), "Bearer [REDACTED]")
     }
 
     private fun createTextView(text: String, isTitle: Boolean = false): TextView {
@@ -361,6 +352,7 @@ class MainActivity : AppCompatActivity() {
 
             for (link in links) {
                 if (visited.size >= MAX_PAGES) break
+                delay(CRAWL_REQUEST_DELAY_MS)
                 crawlPage(link, depth + 1, visited, scanOrigin)
             }
         }
@@ -798,6 +790,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_PAGES = 20
         private const val DEPTH_LIMIT = 5
         private const val MAX_LINKS_PER_PAGE = 10
+        private const val CRAWL_REQUEST_DELAY_MS = 200L
         private const val MAX_RESPONSE_BYTES = 1_048_576
         private const val MAX_API_RESPONSE_BYTES = 512 * 1024
         private const val MAX_ROBOTS_BYTES = 64 * 1024

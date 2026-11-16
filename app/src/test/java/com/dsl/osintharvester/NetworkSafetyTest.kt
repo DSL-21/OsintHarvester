@@ -70,6 +70,20 @@ class NetworkSafetyTest {
     }
 
     @Test
+    fun redactsCommonSecretAssignmentsAndBearerTokens() {
+        val bearer = "Authorization: Bearer abc.def.ghi"
+        val redactedBearer = SensitiveTextRedactor.redact(bearer)
+        assertFalse(redactedBearer.contains("abc.def.ghi"))
+        assertTrue(redactedBearer.contains("[REDACTED]"))
+
+        val json = """{"api_key":"top-secret-value","password":"my-password"}"""
+        val redactedJson = SensitiveTextRedactor.redact(json)
+        assertFalse(redactedJson.contains("top-secret-value"))
+        assertFalse(redactedJson.contains("my-password"))
+        assertTrue(redactedJson.contains("[REDACTED]"))
+    }
+
+    @Test
     fun stripsQueryAndFragmentBeforeThirdPartyLookup() {
         val input = "https://example.com/profile?token=private#section".toHttpUrl()
         val safe = NetworkSafety.withoutSensitiveComponents(input)
