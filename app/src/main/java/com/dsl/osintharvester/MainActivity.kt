@@ -294,7 +294,8 @@ class MainActivity : AppCompatActivity() {
         activeCalls.clear()
     }
 
-    private fun anyBasicChecked(options: ScanOptions): Boolean =        options.emails || options.phones || options.social || options.meta ||
+    private fun anyBasicChecked(options: ScanOptions): Boolean =
+        options.emails || options.phones || options.social || options.meta ||
             options.comments || options.headers || options.apiKeys || options.errors
 
     private suspend fun updateStatus(text: String) {
@@ -698,7 +699,6 @@ class MainActivity : AppCompatActivity() {
     private suspend fun testCommonDirectories(startUrl: String) {
         val base = NetworkSafety.parseTarget(startUrl) ?: return
         val publicPaths = listOf(
-            "/robots.txt",
             "/sitemap.xml",
             "/.well-known/security.txt"
         )
@@ -905,7 +905,7 @@ class MainActivity : AppCompatActivity() {
         private const val MAX_RESPONSE_BYTES = 1_048_576
         private const val MAX_API_RESPONSE_BYTES = 512 * 1024
         private const val MAX_DNS_RESPONSE_BYTES = 32 * 1024
-        private const val MAX_RDAP_BOOTSTRAP_BYTES = 256 * 1024
+        private const val MAX_RDAP_BOOTSTRAP_BYTES = 512 * 1024
         private const val MAX_RDAP_RESPONSE_BYTES = 128 * 1024
         private const val MAX_PARALLEL_MODULES = 4
         private const val MAX_ROBOTS_BYTES = 64 * 1024
