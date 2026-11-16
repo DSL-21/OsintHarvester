@@ -17,7 +17,7 @@
             android:id="@+id/app_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="OSINT Harvester Pro"
+            android:text="OSINT HARVESTER"
             android:textSize="28sp"
             android:textStyle="bold"
             android:textColor="#FFFFFF"
@@ -27,7 +27,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Používej pouze veřejné weby, které vlastníš nebo máš výslovně povolené analyzovat. Některé volitelné lookupy předávají doménu nebo IP veřejným OSINT službám."
+            android:text="Passive public-source collection · HTTPS only · Authorized targets"
             android:textColor="#BDBDBD"
             android:textSize="13sp"
             android:layout_marginBottom="12dp"/>
@@ -216,7 +216,7 @@
             <CheckBox android:id="@+id/whois_check"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="WHOIS informace"
+                android:text="Domain registration (RDAP)"
                 android:textColor="#E0E0E0"
                 android:buttonTint="#FFC107"/>
 
