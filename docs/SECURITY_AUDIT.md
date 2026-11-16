@@ -24,14 +24,14 @@ This is a targeted source and configuration review of the Android app, its URL h
 
 - Restrict target URLs to HTTPS on port 443 and reject embedded credentials and local hostnames.
 - Add a DNS implementation that resolves once, validates every returned IP, and passes the checked addresses to OkHttp. Private, loopback, link-local, carrier-grade NAT, multicast, documentation, and reserved ranges are rejected.
-- Disable redirects and automatic connection retries.
+- Disable redirects and automatic connection retries; disable system proxies so they cannot bypass the validated DNS resolver.
 - Apply explicit connect, read, write, and total call timeouts.
 - Bound HTML, API, and robots.txt response sizes; close response resources with structured cleanup.
 - Keep crawl links on the exact same origin and enforce page, depth, and per-page link limits.
 - Strip target query strings and fragments before crawl storage and external lookups. The Wayback lookup uses only the site origin.
-- Redact cookie and authentication headers and mask common secret-like values in rendered output.
+- Redact cookie and authentication headers, strip query/fragment components from social and archive URLs, and mask common secret-like values plus recognizable API-key formats in rendered output.
 - Limit the total number and length of visible results.
-- Replace sensitive path probing with HEAD requests to a fixed list of public metadata resources.
+- Replace sensitive path probing with HEAD requests to a fixed list of public metadata resources, splitting the lists to avoid duplicate requests.
 - Use a lifecycle-scoped coroutine job and add a user-visible cancel control.
 - Disable Android backup and cleartext traffic.
 - Add unit tests for URL validation, IP range checks, and sensitive URL component removal.
